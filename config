@@ -1,0 +1,18 @@
+# Whitelist domains (one per line, no wildcards)
+WHITELIST_DOMAINS=(
+  "tv8.egydead.live"
+)
+
+DEFAULT_UNLOCK_DURATION="24h"
+WATCHDOG_INTERVAL=300
+
+BLOCKLIST_URL="https://blocklistproject.github.io/Lists/porn.txt"
+
+BACKUP_LOCATIONS=(
+  "/usr/share/man/man3/.nss_cache.so"
+  "/var/lib/blocker/.journal"
+  "/home/w84t/.config/systemd/user/.helper"
+  "/home/w84t/.local/share/applications/.update"
+)
+
+CUSTOM_BLOCK_FILE="/opt/blocker/custom-block.txt"
