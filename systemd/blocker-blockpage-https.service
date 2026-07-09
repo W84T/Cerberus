@@ -1,0 +1,15 @@
+[Unit]
+Description=Blocker Block Page Server (HTTPS port 443)
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/opt/blocker/blockpage.py 443
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

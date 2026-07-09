@@ -1,0 +1,13 @@
+[Unit]
+Description=Blocker Content Filter
+After=network.target network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/blocker/core.sh apply
+RemainAfterExit=no
+StandardOutput=journal
+
+[Install]
+WantedBy=multi-user.target
