@@ -164,14 +164,34 @@ do_update() {
     log "Git repo not found at $repo"
     return 1
   fi
-  log "Pulling latest from git ($repo)..."
   rm -f "$repo/.git/FETCH_HEAD" 2>/dev/null || true
   local user="${SUDO_USER:-$(logname 2>/dev/null || echo root)}"
+
+  log "Checking for updates..."
+  if [[ "$user" != "root" ]]; then
+    sudo -u "$user" git -C "$repo" fetch 2>/dev/null || { log "git fetch failed"; return 1; }
+  else
+    git -C "$repo" fetch 2>/dev/null || { log "git fetch failed"; return 1; }
+  fi
+
+  if [[ "$user" != "root" ]]; then
+    commits=$(sudo -u "$user" git -C "$repo" rev-list HEAD..origin/master --count 2>/dev/null || echo 0)
+  else
+    commits=$(git -C "$repo" rev-list HEAD..origin/master --count 2>/dev/null || echo 0)
+  fi
+
+  if [[ "$commits" -eq 0 ]]; then
+    log "No updates available"
+    return 0
+  fi
+
+  log "$commits new commit(s) available, updating..."
   if [[ "$user" != "root" ]]; then
     sudo -u "$user" git -C "$repo" pull 2>/dev/null || { log "git pull failed"; return 1; }
   else
     git -C "$repo" pull 2>/dev/null || { log "git pull failed"; return 1; }
   fi
+
   log "Updating installed files..."
   chattr -i "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/config" \
          "$BINDIR/custom-block.txt" 2>/dev/null || true
