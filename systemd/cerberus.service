@@ -1,11 +1,11 @@
 [Unit]
-Description=Blocker Content Filter
+Description=Cerberus Content Filter
 After=network.target network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/opt/blocker/core.sh apply
+ExecStart=/opt/cerberus/core.sh apply
 RemainAfterExit=no
 StandardOutput=journal
 

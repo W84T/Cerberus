@@ -1,8 +1,8 @@
 [Unit]
-Description=Blocker Watchdog
+Description=Cerberus Watchdog
 After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/opt/blocker/core.sh check
+ExecStart=/opt/cerberus/core.sh check
 StandardOutput=journal

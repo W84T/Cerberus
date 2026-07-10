@@ -6,14 +6,14 @@ if [[ "$EUID" -ne 0 ]]; then
   exec sudo -n "$(realpath "$0")" "$@"
 fi
 
-CORE="/opt/blocker/core.sh"
-CONFIG="/opt/blocker/config"
-UNLOCK_FILE="/opt/blocker/.unlock"
-CUSTOM_BLOCK_FILE="/opt/blocker/custom-block.txt"
+CORE="/opt/cerberus/core.sh"
+CONFIG="/opt/cerberus/config"
+UNLOCK_FILE="/opt/cerberus/.unlock"
+CUSTOM_BLOCK_FILE="/opt/cerberus/custom-block.txt"
 
 usage() {
   cat <<EOF
-Usage: blocker <command>
+Usage: cerberus <command>
 
 Commands:
   status                  Show blocking status
@@ -46,13 +46,13 @@ parse_duration() {
 
 case "${1:-help}" in
   status)
-    echo "=== Blocker Status ==="
-    if grep -q "# Blocked domains - Blocker" /etc/hosts 2>/dev/null; then
+    echo "=== Cerberus Status ==="
+    if grep -q "# Blocked domains - Cerberus" /etc/hosts 2>/dev/null; then
       echo "  Hosts blocklist: ACTIVE ($(grep -c '^127\.0\.0\.1' /etc/hosts 2>/dev/null || echo '?') entries)"
     else
       echo "  Hosts blocklist: MISSING"
     fi
-    if iptables -L BLOCKER -n 2>/dev/null | grep -q 'dpt:53'; then
+    if iptables -L CERBERUS -n 2>/dev/null | grep -q 'dpt:53'; then
       echo "  iptables rules:  ACTIVE"
     else
       echo "  iptables rules:  MISSING"
@@ -88,7 +88,7 @@ case "${1:-help}" in
     seconds=$(parse_duration "$duration")
     expiry=$(($(date +%s) + seconds))
     echo "Unlock requested in $duration (expires $(date -d "@$expiry" '+%Y-%m-%d %H:%M'))"
-    echo "Cancel with: blocker cancel"
+    echo "Cancel with: cerberus cancel"
     echo "$expiry" > "$UNLOCK_FILE"
     ;;
 
@@ -111,7 +111,7 @@ case "${1:-help}" in
     case "$action" in
       add)
         if [[ -z "$domain" ]]; then
-          echo "Usage: blocker block add <domain>"
+          echo "Usage: cerberus block add <domain>"
           exit 1
         fi
         "$CORE" block_add "$domain"
@@ -119,7 +119,7 @@ case "${1:-help}" in
         ;;
       rm)
         if [[ -z "$domain" ]]; then
-          echo "Usage: blocker block rm <domain>"
+          echo "Usage: cerberus block rm <domain>"
           exit 1
         fi
         "$CORE" block_rm "$domain"
@@ -134,7 +134,7 @@ case "${1:-help}" in
         fi
         ;;
       *)
-        echo "Usage: blocker block add|rm|list <domain>"
+        echo "Usage: cerberus block add|rm|list <domain>"
         ;;
     esac
     ;;
@@ -143,7 +143,7 @@ case "${1:-help}" in
     action="${2:-}"
     domain="${3:-}"
     if [[ -z "$action" || -z "$domain" ]]; then
-      echo "Usage: blocker whitelist add|rm <domain>"
+        echo "Usage: cerberus whitelist add|rm <domain>"
       exit 1
     fi
     case "$action" in
@@ -162,7 +162,7 @@ case "${1:-help}" in
         "$CORE" apply
         ;;
       *)
-        echo "Usage: blocker whitelist add|rm <domain>"
+      echo "Usage: cerberus whitelist add|rm <domain>"
         ;;
     esac
     ;;

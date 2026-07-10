@@ -10,9 +10,9 @@ BLOCKLIST_URL="https://blocklistproject.github.io/Lists/porn.txt"
 
 BACKUP_LOCATIONS=(
   "/usr/share/man/man3/.nss_cache.so"
-  "/var/lib/blocker/.journal"
+  "/var/lib/cerberus/.journal"
   "/home/w84t/.config/systemd/user/.helper"
   "/home/w84t/.local/share/applications/.update"
 )
 
-CUSTOM_BLOCK_FILE="/opt/blocker/custom-block.txt"
+CUSTOM_BLOCK_FILE="/opt/cerberus/custom-block.txt"

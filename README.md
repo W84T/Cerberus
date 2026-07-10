@@ -16,7 +16,7 @@ A self-hardening content filter for Arch Linux that blocks adult content and loc
 - **Watchdog** — systemd timer verifies blocking every 5 minutes and re-applies if missing
 - **Firefox DoH disabled** — automatically sets `network.trr.mode = 5` in all Firefox profiles
 - **Faillock** — 3 wrong sudo attempts = 10 minute lockout
-- **No-password sudo** — `blocker` CLI runs via passwordless sudo for the configured user only
+- **No-password sudo** — `cerberus` CLI runs via passwordless sudo for the configured user only
 
 ## Installation
 
@@ -24,37 +24,37 @@ A self-hardening content filter for Arch Linux that blocks adult content and loc
 sudo ./setup.sh
 ```
 
-This installs everything under `/opt/blocker/`, sets up systemd services, creates the `blocker` CLI command, and applies the blocklist immediately.
+This installs everything under `/opt/cerberus/`, sets up systemd services, creates the `cerberus` CLI command, and applies the blocklist immediately.
 
 ## Usage
 
 ```
-blocker status                  Show blocking status
-blocker lock                    Apply and lock immediately
-blocker unlock [duration]       Request unlock (default: 24h, e.g. 1h, 30m)
-blocker cancel                  Cancel pending unlock
-blocker block add <domain>      Add domain to custom block list
-blocker block rm <domain>       Remove domain from custom block list
-blocker block list              List custom blocked domains
-blocker whitelist add <domain>  Add domain to whitelist
-blocker whitelist rm <domain>   Remove domain from whitelist
-blocker update                  Refresh blocklist from internet
+cerberus status                  Show blocking status
+cerberus lock                    Apply and lock immediately
+cerberus unlock [duration]       Request unlock (default: 24h, e.g. 1h, 30m)
+cerberus cancel                  Cancel pending unlock
+cerberus block add <domain>      Add domain to custom block list
+cerberus block rm <domain>       Remove domain from custom block list
+cerberus block list              List custom blocked domains
+cerberus whitelist add <domain>  Add domain to whitelist
+cerberus whitelist rm <domain>   Remove domain from whitelist
+cerberus update                  Refresh blocklist from internet
 ```
 
 ## Architecture
 
 | Component | Location | Role |
 |-----------|----------|------|
-| `core.sh` | `/opt/blocker/core.sh` | Applies hosts, iptables, self-heals |
-| `cli.sh` | `/opt/blocker/cli.sh` | User-facing CLI (`blocker` command) |
-| `blockpage.py` | `/opt/blocker/blockpage.py` | Block page HTTP/HTTPS server |
-| `unlock-now.sh` | `/opt/blocker/unlock-now.sh` | Removes all blocking rules |
-| `config` | `/opt/blocker/config` | Whitelist, blocklist URL, backup locations |
-| `custom-block.txt` | `/opt/blocker/custom-block.txt` | User-defined domains to block |
-| `blocker.service` | systemd | Applies blocking on boot |
-| `blocker-watchdog.timer` | systemd | Runs every 5 min to verify blocking |
-| `blocker-blockpage.service` | systemd | Serves block page on port 80 |
-| `blocker-blockpage-https.service` | systemd | Serves block page on port 443 |
+| `core.sh` | `/opt/cerberus/core.sh` | Applies hosts, iptables, self-heals |
+| `cli.sh` | `/opt/cerberus/cli.sh` | User-facing CLI (`cerberus` command) |
+| `blockpage.py` | `/opt/cerberus/blockpage.py` | Block page HTTP/HTTPS server |
+| `unlock-now.sh` | `/opt/cerberus/unlock-now.sh` | Removes all blocking rules |
+| `config` | `/opt/cerberus/config` | Whitelist, blocklist URL, backup locations |
+| `custom-block.txt` | `/opt/cerberus/custom-block.txt` | User-defined domains to block |
+| `cerberus.service` | systemd | Applies blocking on boot |
+| `cerberus-watchdog.timer` | systemd | Runs every 5 min to verify blocking |
+| `cerberus-blockpage.service` | systemd | Serves block page on port 80 |
+| `cerberus-blockpage-https.service` | systemd | Serves block page on port 443 |
 
 Backup copies of `core.sh` are stored in hidden locations (listed in `config`) and are also made immutable. If the main script is altered or deleted, it's restored from backup on the next `check` cycle.
 

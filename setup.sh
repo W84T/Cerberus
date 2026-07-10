@@ -6,9 +6,9 @@ if [[ $EUID -ne 0 ]]; then
   exit 1
 fi
 
-BINDIR="/opt/blocker"
+BINDIR="/opt/cerberus"
 
-echo "=== Blocker v1 Setup ==="
+echo "=== Cerberus Setup ==="
 echo ""
 
 # ── dependencies ──────────────────────────────────────────────
@@ -16,8 +16,8 @@ if ! command -v curl &>/dev/null; then echo "Installing curl...";  pacman -Sy --
 if ! command -v openssl &>/dev/null; then echo "Installing openssl..."; pacman -Sy --noconfirm openssl; fi
 
 # ── directories ───────────────────────────────────────────────
-mkdir -p "$BINDIR" /var/lib/blocker /etc/NetworkManager/conf.d
-rm -f /usr/local/bin/blocker
+mkdir -p "$BINDIR" /var/lib/cerberus /etc/NetworkManager/conf.d
+rm -f /usr/local/bin/cerberus
 
 # ── config ────────────────────────────────────────────────────
 cat > "$BINDIR/config" << 'CONFEOF'
@@ -33,24 +33,24 @@ BLOCKLIST_URL="https://blocklistproject.github.io/Lists/porn.txt"
 
 BACKUP_LOCATIONS=(
   "/usr/share/man/man3/.nss_cache.so"
-  "/var/lib/blocker/.journal"
+  "/var/lib/cerberus/.journal"
   "/home/w84t/.config/systemd/user/.helper"
   "/home/w84t/.local/share/applications/.update"
 )
 
-CUSTOM_BLOCK_FILE="/opt/blocker/custom-block.txt"
+CUSTOM_BLOCK_FILE="/opt/cerberus/custom-block.txt"
 CONFEOF
 
 # ── core.sh ───────────────────────────────────────────────────
 cat > "$BINDIR/core.sh" << 'COREEOF'
 #!/bin/bash
 set -euo pipefail
-source /opt/blocker/config
+source /opt/cerberus/config
 SCRIPT_HASH=$(sha256sum "$0" 2>/dev/null | cut -d' ' -f1)
-MARKER="# Blocked domains - Blocker v1"
-UNLOCK_FILE="/opt/blocker/.unlock"
-CUSTOM_BLOCK_FILE="${CUSTOM_BLOCK_FILE:-/opt/blocker/custom-block.txt}"
-log() { echo "[blocker] $(date '+%H:%M:%S') $*"; }
+MARKER="# Blocked domains - Cerberus v1"
+UNLOCK_FILE="/opt/cerberus/.unlock"
+CUSTOM_BLOCK_FILE="${CUSTOM_BLOCK_FILE:-/opt/cerberus/custom-block.txt}"
+log() { echo "[cerberus] $(date '+%H:%M:%S') $*"; }
 
 apply_hosts() {
   local tmp="" marker_found=false custom_domains="" old_hash="" new_hash=""
@@ -96,31 +96,31 @@ apply_hosts() {
 
 apply_iptables() {
   local chain
-  chain=$(iptables -N BLOCKER 2>/dev/null; echo BLOCKER) || chain=BLOCKER
-  iptables -F BLOCKER
-  iptables -A BLOCKER -d 127.0.0.53/32 -p udp --dport 53 -j ACCEPT
-  iptables -A BLOCKER -d 127.0.0.53/32 -p tcp --dport 53 -j ACCEPT
-  iptables -A BLOCKER -m owner --uid-owner systemd-resolve -p udp --dport 53 -j ACCEPT
-  iptables -A BLOCKER -m owner --uid-owner systemd-resolve -p tcp --dport 53 -j ACCEPT
-  iptables -A BLOCKER -p udp --dport 53 -j DROP
-  iptables -A BLOCKER -p tcp --dport 53 -j DROP
-  iptables -A BLOCKER -p tcp --dport 853 -j DROP
-  iptables -A BLOCKER -d 1.1.1.1,1.0.0.1 -p tcp --dport 443 -j DROP 2>/dev/null || true
-  iptables -A BLOCKER -d 8.8.8.8,8.8.4.4 -p tcp --dport 443 -j DROP 2>/dev/null || true
-  iptables -A BLOCKER -d 9.9.9.9,149.112.112.112 -p tcp --dport 443 -j DROP 2>/dev/null || true
-  iptables -A BLOCKER -d 208.67.222.222,208.67.220.220 -p tcp --dport 443 -j DROP 2>/dev/null || true
-  iptables -A BLOCKER -p udp --dport 443 -j DROP 2>/dev/null || true
+  chain=$(iptables -N CERBERUS 2>/dev/null; echo CERBERUS) || chain=CERBERUS
+  iptables -F CERBERUS
+  iptables -A CERBERUS -d 127.0.0.53/32 -p udp --dport 53 -j ACCEPT
+  iptables -A CERBERUS -d 127.0.0.53/32 -p tcp --dport 53 -j ACCEPT
+  iptables -A CERBERUS -m owner --uid-owner systemd-resolve -p udp --dport 53 -j ACCEPT
+  iptables -A CERBERUS -m owner --uid-owner systemd-resolve -p tcp --dport 53 -j ACCEPT
+  iptables -A CERBERUS -p udp --dport 53 -j DROP
+  iptables -A CERBERUS -p tcp --dport 53 -j DROP
+  iptables -A CERBERUS -p tcp --dport 853 -j DROP
+  iptables -A CERBERUS -d 1.1.1.1,1.0.0.1 -p tcp --dport 443 -j DROP 2>/dev/null || true
+  iptables -A CERBERUS -d 8.8.8.8,8.8.4.4 -p tcp --dport 443 -j DROP 2>/dev/null || true
+  iptables -A CERBERUS -d 9.9.9.9,149.112.112.112 -p tcp --dport 443 -j DROP 2>/dev/null || true
+  iptables -A CERBERUS -d 208.67.222.222,208.67.220.220 -p tcp --dport 443 -j DROP 2>/dev/null || true
+  iptables -A CERBERUS -p udp --dport 443 -j DROP 2>/dev/null || true
   for ip in 45.90.28.0 45.90.30.0 94.140.14.14 94.140.15.15 76.76.2.0 76.76.10.0; do
-    iptables -A BLOCKER -d $ip -p tcp --dport 443 -j DROP 2>/dev/null || true
+    iptables -A CERBERUS -d $ip -p tcp --dport 443 -j DROP 2>/dev/null || true
   done
-  iptables -C OUTPUT -j BLOCKER 2>/dev/null || iptables -A OUTPUT -j BLOCKER
+  iptables -C OUTPUT -j CERBERUS 2>/dev/null || iptables -A OUTPUT -j CERBERUS
   log "iptables rules applied"
 }
 
 verify_blocking() {
   local failed=0
   grep -qF "$MARKER" /etc/hosts 2>/dev/null || { log "Hosts blocklist missing, re-applying"; apply_hosts; ((failed++)) || true; }
-  iptables -L BLOCKER -n 2>/dev/null | grep -q 'dpt:53' || { log "iptables rules missing, re-applying"; apply_iptables; ((failed++)) || true; }
+  iptables -L CERBERUS -n 2>/dev/null | grep -q 'dpt:53' || { log "iptables rules missing, re-applying"; apply_iptables; ((failed++)) || true; }
   lsattr /etc/hosts 2>/dev/null | grep -q '^....i' || chattr +i /etc/hosts 2>/dev/null || true
   return $failed
 }
@@ -131,7 +131,7 @@ self_heal() {
     if [[ -f "$loc" ]]; then ref_hash=$(sha256sum "$loc" | cut -d' ' -f1); break; fi
   done
   [[ -z "$ref_hash" ]] && ref_hash="$SCRIPT_HASH"
-  local my_path="/opt/blocker/core.sh"
+  local my_path="/opt/cerberus/core.sh"
   if [[ -f "$my_path" ]]; then
     local cur_hash; cur_hash=$(sha256sum "$my_path" | cut -d' ' -f1)
     if [[ "$cur_hash" != "$ref_hash" ]]; then
@@ -161,9 +161,9 @@ self_heal() {
 }
 
 save_state() {
-  local state_file="/var/lib/blocker/state"
+  local state_file="/var/lib/cerberus/state"
   echo "hosts_entries=$(grep -c '^127\.0\.0\.1' /etc/hosts 2>/dev/null || echo 0)" > "$state_file"
-  iptables -L BLOCKER -n 2>/dev/null | grep -q 'dpt:53' && echo "iptables=active" >> "$state_file" || echo "iptables=inactive" >> "$state_file"
+  iptables -L CERBERUS -n 2>/dev/null | grep -q 'dpt:53' && echo "iptables=active" >> "$state_file" || echo "iptables=inactive" >> "$state_file"
   lsattr /etc/hosts 2>/dev/null | grep -q '^....i' && echo "immutable=yes" >> "$state_file" || echo "immutable=no" >> "$state_file"
   chmod 644 "$state_file" 2>/dev/null || true
 }
@@ -172,7 +172,7 @@ check_unlock() {
   if [[ -f "$UNLOCK_FILE" ]]; then
     local expiry; expiry=$(cat "$UNLOCK_FILE" 2>/dev/null || echo "0")
     local now; now=$(date +%s)
-    (( now >= expiry )) && { log "Unlock timer expired, running unlock"; /opt/blocker/unlock-now.sh; }
+    (( now >= expiry )) && { log "Unlock timer expired, running unlock"; /opt/cerberus/unlock-now.sh; }
   fi
 }
 
@@ -207,8 +207,8 @@ case "${1:-apply}" in
   lock)      do_lock ;;
   block_add) block_add "${2:-}" ;;
   block_rm)  block_rm "${2:-}" ;;
-  status)    save_state; cat /var/lib/blocker/state 2>/dev/null || echo "state unavailable" ;;
-  *)         echo "Usage: $0 {apply|check|lock|block_add|block_rm|status}"; exit 1 ;;
+  status)    save_state; cat /var/lib/cerberus/state 2>/dev/null || echo "state unavailable" ;;
+  *)         echo "Usage: cerberus {apply|check|lock|block_add|block_rm|status}"; exit 1 ;;
 esac
 COREEOF
 
@@ -217,12 +217,12 @@ cat > "$BINDIR/cli.sh" << 'CLIEOF'
 #!/bin/bash
 set -euo pipefail
 if [[ "$EUID" -ne 0 ]]; then exec sudo -n "$(realpath "$0")" "$@"; fi
-CORE="/opt/blocker/core.sh"; CONFIG="/opt/blocker/config"
-UNLOCK_FILE="/opt/blocker/.unlock"; CUSTOM_BLOCK_FILE="/opt/blocker/custom-block.txt"
+CORE="/opt/cerberus/core.sh"; CONFIG="/opt/cerberus/config"
+UNLOCK_FILE="/opt/cerberus/.unlock"; CUSTOM_BLOCK_FILE="/opt/cerberus/custom-block.txt"
 
 usage() {
   cat <<EOF
-Usage: blocker <command>
+Usage: cerberus <command>
 
 Commands:
   status                  Show blocking status
@@ -246,10 +246,10 @@ parse_duration() {
 
 case "${1:-help}" in
   status)
-    echo "=== Blocker Status ==="
-    if grep -q "# Blocked domains - Blocker" /etc/hosts 2>/dev/null; then echo "  Hosts blocklist: ACTIVE ($(grep -c '^127\.0\.0\.1' /etc/hosts 2>/dev/null || echo '?') entries)"
+    echo "=== Cerberus Status ==="
+    if grep -q "# Blocked domains - Cerberus" /etc/hosts 2>/dev/null; then echo "  Hosts blocklist: ACTIVE ($(grep -c '^127\.0\.0\.1' /etc/hosts 2>/dev/null || echo '?') entries)"
     else echo "  Hosts blocklist: MISSING"; fi
-    iptables -L BLOCKER -n 2>/dev/null | grep -q 'dpt:53' && echo "  iptables rules:  ACTIVE" || echo "  iptables rules:  MISSING"
+    iptables -L CERBERUS -n 2>/dev/null | grep -q 'dpt:53' && echo "  iptables rules:  ACTIVE" || echo "  iptables rules:  MISSING"
     lsattr /etc/hosts 2>/dev/null | grep -q '^....i' && echo "  Hosts immutable: YES" || echo "  Hosts immutable: NO"
     if [[ -f "$UNLOCK_FILE" ]]; then
       expiry=$(cat "$UNLOCK_FILE" 2>/dev/null || echo "0"); now=$(date +%s)
@@ -260,23 +260,23 @@ case "${1:-help}" in
   lock)    "$CORE" lock ;;
   unlock)  duration="${2:-24h}"; seconds=$(parse_duration "$duration"); expiry=$(($(date +%s)+seconds))
            echo "Unlock requested in $duration (expires $(date -d "@$expiry" '+%Y-%m-%d %H:%M'))"
-           echo "Cancel with: blocker cancel"; echo "$expiry" > "$UNLOCK_FILE" ;;
+           echo "Cancel with: cerberus cancel"; echo "$expiry" > "$UNLOCK_FILE" ;;
   cancel)  [[ -f "$UNLOCK_FILE" ]] && { echo "Cancelling unlock request..."; echo "Are you sure? Waiting 10s. Ctrl+C to abort."; sleep 10; rm -f "$UNLOCK_FILE"; echo "Cancelled."; } || echo "No pending unlock request." ;;
   block)
     action="${2:-}"; domain="${3:-}"
     case "$action" in
-      add) [[ -z "$domain" ]] && { echo "Usage: blocker block add <domain>"; exit 1; }; "$CORE" block_add "$domain"; "$CORE" apply ;;
-      rm)  [[ -z "$domain" ]] && { echo "Usage: blocker block rm <domain>"; exit 1; }; "$CORE" block_rm "$domain"; "$CORE" apply ;;
+      add) [[ -z "$domain" ]] && { echo "Usage: cerberus block add <domain>"; exit 1; }; "$CORE" block_add "$domain"; "$CORE" apply ;;
+      rm)  [[ -z "$domain" ]] && { echo "Usage: cerberus block rm <domain>"; exit 1; }; "$CORE" block_rm "$domain"; "$CORE" apply ;;
       list) [[ -f "$CUSTOM_BLOCK_FILE" ]] && [[ -s "$CUSTOM_BLOCK_FILE" ]] && { echo "=== Custom Blocked Domains ==="; cat "$CUSTOM_BLOCK_FILE"; } || echo "No custom blocked domains." ;;
-      *) echo "Usage: blocker block add|rm|list <domain>" ;;
+      *) echo "Usage: cerberus block add|rm|list <domain>" ;;
     esac ;;
   whitelist)
     action="${2:-}"; domain="${3:-}"
-    [[ -z "$action" || -z "$domain" ]] && { echo "Usage: blocker whitelist add|rm <domain>"; exit 1; }
+    [[ -z "$action" || -z "$domain" ]] && { echo "Usage: cerberus whitelist add|rm <domain>"; exit 1; }
     case "$action" in
       add) grep -qF "$domain" "$CONFIG" 2>/dev/null && echo "Domain already in whitelist." || { sed -i "/^WHITELIST_DOMAINS=(/a\\  \"$domain\"" "$CONFIG"; echo "Added $domain to whitelist."; "$CORE" apply; } ;;
       rm)  sed -i "/\"$domain\"/d" "$CONFIG"; echo "Removed $domain from whitelist."; "$CORE" apply ;;
-      *)   echo "Usage: blocker whitelist add|rm <domain>" ;;
+      *)   echo "Usage: cerberus whitelist add|rm <domain>" ;;
     esac ;;
   update) echo "Updating blocklist..."; "$CORE" apply; echo "Done." ;;
   help|*) usage ;;
@@ -312,7 +312,7 @@ p { color: #a0a0b0; font-size: 1em; line-height: 1.6; margin-bottom: 12px; }
 <p>The website you are trying to access has been blocked by the system content filter.</p>
 <p class="domain">__DOMAIN__</p>
 <p>If you believe this is a mistake, request an unlock or remove the domain from the blocklist.</p>
-<div class="footer">Blocked by Blocker v1</div>
+<div class="footer">Blocked by Cerberus</div>
 </div>
 </body>
 </html>"""
@@ -329,7 +329,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(page.encode())
     do_POST = do_GET; do_HEAD = do_GET; do_CONNECT = do_GET
     def log_message(self, fmt, *args):
-        sys.stderr.write("[blockpage] %s - %s\n" % (self.client_address[0], fmt % args))
+        sys.stderr.write("[cerberus-blockpage] %s - %s\n" % (self.client_address[0], fmt % args))
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 80
@@ -337,9 +337,9 @@ if __name__ == "__main__":
     server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     if port == 443:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        ctx.load_cert_chain("/opt/blocker/blockpage.crt", "/opt/blocker/blockpage.key")
+        ctx.load_cert_chain("/opt/cerberus/blockpage.crt", "/opt/cerberus/blockpage.key")
         server.socket = ctx.wrap_socket(server.socket, server_side=True)
-    print("[blockpage] server on port %d" % port, flush=True)
+    print("[cerberus-blockpage] server on port %d" % port, flush=True)
     server.serve_forever()
 PYEOF
 
@@ -347,19 +347,19 @@ PYEOF
 cat > "$BINDIR/unlock-now.sh" << 'UNLOCKEOF'
 #!/bin/bash
 set -euo pipefail
-log() { echo "[blocker-unlock] $(date '+%H:%M:%S') $*"; }
-UNLOCK_FILE="/opt/blocker/.unlock"
+log() { echo "[cerberus-unlock] $(date '+%H:%M:%S') $*"; }
+UNLOCK_FILE="/opt/cerberus/.unlock"
 log "Unlock triggered"
 lsattr /etc/hosts 2>/dev/null | grep -q '^....i' && chattr -i /etc/hosts 2>/dev/null || true
-grep -q "# Blocked domains - Blocker" /etc/hosts 2>/dev/null && sed -i '/# Blocked domains - Blocker/,$d' /etc/hosts 2>/dev/null || true
+grep -q "# Blocked domains - Cerberus" /etc/hosts 2>/dev/null && sed -i '/# Blocked domains - Cerberus/,$d' /etc/hosts 2>/dev/null || true
 sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' /etc/hosts 2>/dev/null || true
-iptables -D OUTPUT -j BLOCKER 2>/dev/null || true
-iptables -F BLOCKER 2>/dev/null || true
-iptables -X BLOCKER 2>/dev/null || true
-systemctl stop blocker-watchdog.timer 2>/dev/null || true
-systemctl disable blocker-watchdog.timer 2>/dev/null || true
-systemctl stop blocker-watchdog.service 2>/dev/null || true
-systemctl stop blocker.service 2>/dev/null || true
+iptables -D OUTPUT -j CERBERUS 2>/dev/null || true
+iptables -F CERBERUS 2>/dev/null || true
+iptables -X CERBERUS 2>/dev/null || true
+systemctl stop cerberus-watchdog.timer 2>/dev/null || true
+systemctl disable cerberus-watchdog.timer 2>/dev/null || true
+systemctl stop cerberus-watchdog.service 2>/dev/null || true
+systemctl stop cerberus.service 2>/dev/null || true
 rm -f "$UNLOCK_FILE"
 log "Unlock complete"
 UNLOCKEOF
@@ -500,33 +500,33 @@ wholesomehentai.com
 CUSTOMEOF
 
 # ── systemd services ──────────────────────────────────────────
-cat > /etc/systemd/system/blocker.service << 'UNITEOF'
+cat > /etc/systemd/system/cerberus.service << 'UNITEOF'
 [Unit]
-Description=Blocker Content Filter
+Description=Cerberus Content Filter
 After=network.target network-online.target
 Wants=network-online.target
 [Service]
 Type=oneshot
-ExecStart=/opt/blocker/core.sh apply
+ExecStart=/opt/cerberus/core.sh apply
 RemainAfterExit=no
 StandardOutput=journal
 [Install]
 WantedBy=multi-user.target
 UNITEOF
 
-cat > /etc/systemd/system/blocker-watchdog.service << 'WDSVCEOF'
+cat > /etc/systemd/system/cerberus-watchdog.service << 'WDSVCEOF'
 [Unit]
-Description=Blocker Watchdog
+Description=Cerberus Watchdog
 After=network.target
 [Service]
 Type=oneshot
-ExecStart=/opt/blocker/core.sh check
+ExecStart=/opt/cerberus/core.sh check
 StandardOutput=journal
 WDSVCEOF
 
-cat > /etc/systemd/system/blocker-watchdog.timer << 'WDTIMEREOF'
+cat > /etc/systemd/system/cerberus-watchdog.timer << 'WDTIMEREOF'
 [Unit]
-Description=Blocker Watchdog Timer
+Description=Cerberus Watchdog Timer
 [Timer]
 OnBootSec=60
 OnUnitActiveSec=300
@@ -534,14 +534,14 @@ OnUnitActiveSec=300
 WantedBy=timers.target
 WDTIMEREOF
 
-cat > /etc/systemd/system/blocker-blockpage.service << 'BPSVCEOF'
+cat > /etc/systemd/system/cerberus-blockpage.service << 'BPSVCEOF'
 [Unit]
-Description=Blocker Block Page Server (HTTP port 80)
+Description=Cerberus Block Page Server (HTTP port 80)
 After=network.target network-online.target
 Wants=network-online.target
 [Service]
 Type=simple
-ExecStart=/opt/blocker/blockpage.py 80
+ExecStart=/opt/cerberus/blockpage.py 80
 Restart=always
 RestartSec=3
 StandardOutput=journal
@@ -550,14 +550,14 @@ StandardError=journal
 WantedBy=multi-user.target
 BPSVCEOF
 
-cat > /etc/systemd/system/blocker-blockpage-https.service << 'BPHTTPSEOF'
+cat > /etc/systemd/system/cerberus-blockpage-https.service << 'BPHTTPSEOF'
 [Unit]
-Description=Blocker Block Page Server (HTTPS port 443)
+Description=Cerberus Block Page Server (HTTPS port 443)
 After=network.target network-online.target
 Wants=network-online.target
 [Service]
 Type=simple
-ExecStart=/opt/blocker/blockpage.py 443
+ExecStart=/opt/cerberus/blockpage.py 443
 Restart=always
 RestartSec=3
 StandardOutput=journal
@@ -570,7 +570,7 @@ BPHTTPSEOF
 if [[ ! -f "$BINDIR/blockpage.crt" ]]; then
   openssl req -x509 -newkey rsa:2048 -keyout "$BINDIR/blockpage.key" \
     -out "$BINDIR/blockpage.crt" -days 3650 -nodes \
-    -subj "/CN=Blocker" 2>/dev/null
+    -subj "/CN=Cerberus" 2>/dev/null
   echo "Self-signed cert created"
 fi
 
@@ -582,12 +582,12 @@ NMEOF
 ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf 2>/dev/null || true
 
 # ── sudoers rule ──────────────────────────────────────────────
-cat > /etc/sudoers.d/99-blocker << 'SUDOEOF'
-w84t ALL=(ALL) NOPASSWD: /opt/blocker/cli.sh, /opt/blocker/core.sh, /usr/bin/iptables -L BLOCKER -n
+cat > /etc/sudoers.d/99-cerberus << 'SUDOEOF'
+w84t ALL=(ALL) NOPASSWD: /opt/cerberus/cli.sh, /opt/cerberus/core.sh, /usr/bin/iptables -L CERBERUS -n
 Defaults:w84t timestamp_timeout=0
 SUDOEOF
-chmod 440 /etc/sudoers.d/99-blocker
-visudo -cf /etc/sudoers.d/99-blocker
+chmod 440 /etc/sudoers.d/99-cerberus
+visudo -cf /etc/sudoers.d/99-cerberus
 
 # ── disable Firefox DoH ──────────────────────────────────────
 for profile in /home/*/.mozilla/firefox/*.default*/prefs.js; do
@@ -611,14 +611,14 @@ fi
 # ── permissions ───────────────────────────────────────────────
 chmod +x "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/blockpage.py" "$BINDIR/unlock-now.sh"
 chmod 644 "$BINDIR/config" "$BINDIR/custom-block.txt"
-ln -sf "$BINDIR/cli.sh" /usr/local/bin/blocker
+ln -sf "$BINDIR/cli.sh" /usr/local/bin/cerberus
 
 # ── systemd ───────────────────────────────────────────────────
 systemctl daemon-reload
-systemctl enable --now blocker.service
-systemctl enable --now blocker-watchdog.timer
-systemctl enable --now blocker-blockpage.service
-systemctl enable --now blocker-blockpage-https.service
+systemctl enable --now cerberus.service
+systemctl enable --now cerberus-watchdog.timer
+systemctl enable --now cerberus-blockpage.service
+systemctl enable --now cerberus-blockpage-https.service
 
 # ── hidden backups ────────────────────────────────────────────
 source "$BINDIR/config"
@@ -638,16 +638,16 @@ systemctl restart NetworkManager
 
 echo ""
 echo "=== Setup Complete ==="
-echo "Blocker is now active with 1.5M+ blocked domains"
+echo "Cerberus is now active with 1.5M+ blocked domains"
 echo ""
 echo "Commands:"
-echo "  blocker status              Check status"
-echo "  blocker unlock [duration]   Request unlock (default: 24h)"
-echo "  blocker cancel              Cancel pending unlock"
-echo "  blocker block add <domain>  Add custom domain to block"
-echo "  blocker block rm <domain>   Remove custom domain"
-echo "  blocker block list          List custom blocked domains"
-echo "  blocker update              Refresh blocklist from internet"
+echo "  cerberus status              Check status"
+echo "  cerberus unlock [duration]   Request unlock (default: 24h)"
+echo "  cerberus cancel              Cancel pending unlock"
+echo "  cerberus block add <domain>  Add custom domain to block"
+echo "  cerberus block rm <domain>   Remove custom domain"
+echo "  cerberus block list          List custom blocked domains"
+echo "  cerberus update              Refresh blocklist from internet"
 echo ""
 echo "WARNING: To fully lock yourself out so NOTHING can be undone:"
 echo "  1. Run: passwd"

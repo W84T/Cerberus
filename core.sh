@@ -1,11 +1,11 @@
 #!/bin/bash
 set -euo pipefail
-source /opt/blocker/config
+source /opt/cerberus/config
 SCRIPT_HASH=$(sha256sum "$0" 2>/dev/null | cut -d' ' -f1)
-MARKER="# Blocked domains - Blocker v1"
-UNLOCK_FILE="/opt/blocker/.unlock"
-CUSTOM_BLOCK_FILE="${CUSTOM_BLOCK_FILE:-/opt/blocker/custom-block.txt}"
-log() { echo "[blocker] $(date '+%H:%M:%S') $*"; }
+MARKER="# Blocked domains - Cerberus v1"
+UNLOCK_FILE="/opt/cerberus/.unlock"
+CUSTOM_BLOCK_FILE="${CUSTOM_BLOCK_FILE:-/opt/cerberus/custom-block.txt}"
+log() { echo "[cerberus] $(date '+%H:%M:%S') $*"; }
 
 apply_hosts() {
   local tmp="" marker_found=false custom_domains="" old_hash="" new_hash=""
@@ -51,31 +51,31 @@ apply_hosts() {
 
 apply_iptables() {
   local chain
-  chain=$(iptables -N BLOCKER 2>/dev/null; echo BLOCKER) || chain=BLOCKER
-  iptables -F BLOCKER
-  iptables -A BLOCKER -d 127.0.0.53/32 -p udp --dport 53 -j ACCEPT
-  iptables -A BLOCKER -d 127.0.0.53/32 -p tcp --dport 53 -j ACCEPT
-  iptables -A BLOCKER -m owner --uid-owner systemd-resolve -p udp --dport 53 -j ACCEPT
-  iptables -A BLOCKER -m owner --uid-owner systemd-resolve -p tcp --dport 53 -j ACCEPT
-  iptables -A BLOCKER -p udp --dport 53 -j DROP
-  iptables -A BLOCKER -p tcp --dport 53 -j DROP
-  iptables -A BLOCKER -p tcp --dport 853 -j DROP
-  iptables -A BLOCKER -d 1.1.1.1,1.0.0.1 -p tcp --dport 443 -j DROP 2>/dev/null || true
-  iptables -A BLOCKER -d 8.8.8.8,8.8.4.4 -p tcp --dport 443 -j DROP 2>/dev/null || true
-  iptables -A BLOCKER -d 9.9.9.9,149.112.112.112 -p tcp --dport 443 -j DROP 2>/dev/null || true
-  iptables -A BLOCKER -d 208.67.222.222,208.67.220.220 -p tcp --dport 443 -j DROP 2>/dev/null || true
-  iptables -A BLOCKER -p udp --dport 443 -j DROP 2>/dev/null || true
+  chain=$(iptables -N CERBERUS 2>/dev/null; echo CERBERUS) || chain=CERBERUS
+  iptables -F CERBERUS
+  iptables -A CERBERUS -d 127.0.0.53/32 -p udp --dport 53 -j ACCEPT
+  iptables -A CERBERUS -d 127.0.0.53/32 -p tcp --dport 53 -j ACCEPT
+  iptables -A CERBERUS -m owner --uid-owner systemd-resolve -p udp --dport 53 -j ACCEPT
+  iptables -A CERBERUS -m owner --uid-owner systemd-resolve -p tcp --dport 53 -j ACCEPT
+  iptables -A CERBERUS -p udp --dport 53 -j DROP
+  iptables -A CERBERUS -p tcp --dport 53 -j DROP
+  iptables -A CERBERUS -p tcp --dport 853 -j DROP
+  iptables -A CERBERUS -d 1.1.1.1,1.0.0.1 -p tcp --dport 443 -j DROP 2>/dev/null || true
+  iptables -A CERBERUS -d 8.8.8.8,8.8.4.4 -p tcp --dport 443 -j DROP 2>/dev/null || true
+  iptables -A CERBERUS -d 9.9.9.9,149.112.112.112 -p tcp --dport 443 -j DROP 2>/dev/null || true
+  iptables -A CERBERUS -d 208.67.222.222,208.67.220.220 -p tcp --dport 443 -j DROP 2>/dev/null || true
+  iptables -A CERBERUS -p udp --dport 443 -j DROP 2>/dev/null || true
   for ip in 45.90.28.0 45.90.30.0 94.140.14.14 94.140.15.15 76.76.2.0 76.76.10.0; do
-    iptables -A BLOCKER -d $ip -p tcp --dport 443 -j DROP 2>/dev/null || true
+    iptables -A CERBERUS -d $ip -p tcp --dport 443 -j DROP 2>/dev/null || true
   done
-  iptables -C OUTPUT -j BLOCKER 2>/dev/null || iptables -A OUTPUT -j BLOCKER
+  iptables -C OUTPUT -j CERBERUS 2>/dev/null || iptables -A OUTPUT -j CERBERUS
   log "iptables rules applied"
 }
 
 verify_blocking() {
   local failed=0
   grep -qF "$MARKER" /etc/hosts 2>/dev/null || { log "Hosts blocklist missing, re-applying"; apply_hosts; ((failed++)) || true; }
-  iptables -L BLOCKER -n 2>/dev/null | grep -q 'dpt:53' || { log "iptables rules missing, re-applying"; apply_iptables; ((failed++)) || true; }
+  iptables -L CERBERUS -n 2>/dev/null | grep -q 'dpt:53' || { log "iptables rules missing, re-applying"; apply_iptables; ((failed++)) || true; }
   lsattr /etc/hosts 2>/dev/null | grep -q '^....i' || chattr +i /etc/hosts 2>/dev/null || true
   return $failed
 }
@@ -86,7 +86,7 @@ self_heal() {
     if [[ -f "$loc" ]]; then ref_hash=$(sha256sum "$loc" | cut -d' ' -f1); break; fi
   done
   [[ -z "$ref_hash" ]] && ref_hash="$SCRIPT_HASH"
-  local my_path="/opt/blocker/core.sh"
+  local my_path="/opt/cerberus/core.sh"
   if [[ -f "$my_path" ]]; then
     local cur_hash; cur_hash=$(sha256sum "$my_path" | cut -d' ' -f1)
     if [[ "$cur_hash" != "$ref_hash" ]]; then
@@ -116,9 +116,9 @@ self_heal() {
 }
 
 save_state() {
-  local state_file="/var/lib/blocker/state"
+  local state_file="/var/lib/cerberus/state"
   echo "hosts_entries=$(grep -c '^127\.0\.0\.1' /etc/hosts 2>/dev/null || echo 0)" > "$state_file"
-  iptables -L BLOCKER -n 2>/dev/null | grep -q 'dpt:53' && echo "iptables=active" >> "$state_file" || echo "iptables=inactive" >> "$state_file"
+  iptables -L CERBERUS -n 2>/dev/null | grep -q 'dpt:53' && echo "iptables=active" >> "$state_file" || echo "iptables=inactive" >> "$state_file"
   lsattr /etc/hosts 2>/dev/null | grep -q '^....i' && echo "immutable=yes" >> "$state_file" || echo "immutable=no" >> "$state_file"
   chmod 644 "$state_file" 2>/dev/null || true
 }
@@ -127,7 +127,7 @@ check_unlock() {
   if [[ -f "$UNLOCK_FILE" ]]; then
     local expiry; expiry=$(cat "$UNLOCK_FILE" 2>/dev/null || echo "0")
     local now; now=$(date +%s)
-    (( now >= expiry )) && { log "Unlock timer expired, running unlock"; /opt/blocker/unlock-now.sh; }
+    (( now >= expiry )) && { log "Unlock timer expired, running unlock"; /opt/cerberus/unlock-now.sh; }
   fi
 }
 
@@ -162,6 +162,6 @@ case "${1:-apply}" in
   lock)      do_lock ;;
   block_add) block_add "${2:-}" ;;
   block_rm)  block_rm "${2:-}" ;;
-  status)    save_state; cat /var/lib/blocker/state 2>/dev/null || echo "state unavailable" ;;
-  *)         echo "Usage: $0 {apply|check|lock|block_add|block_rm|status}"; exit 1 ;;
+  status)    save_state; cat /var/lib/cerberus/state 2>/dev/null || echo "state unavailable" ;;
+  *)         echo "Usage: cerberus {apply|check|lock|block_add|block_rm|status}"; exit 1 ;;
 esac

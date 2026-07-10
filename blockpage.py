@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Block page server for Blocker - serves on ports 80 (HTTP) and 443 (HTTPS)"""
+"""Block page server for Cerberus - serves on ports 80 (HTTP) and 443 (HTTPS)"""
 import http.server
 import ssl
 import sys
@@ -29,7 +29,7 @@ p { color: #a0a0b0; font-size: 1em; line-height: 1.6; margin-bottom: 12px; }
 <p>The website you are trying to access has been blocked by the system content filter.</p>
 <p class="domain">__DOMAIN__</p>
 <p>If you believe this is a mistake, request an unlock or remove the domain from the blocklist.</p>
-<div class="footer">Blocked by Blocker v1</div>
+<div class="footer">Blocked by Cerberus</div>
 </div>
 </body>
 </html>"""
@@ -49,12 +49,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
     do_CONNECT = do_GET
 
     def log_message(self, format, *args):
-        sys.stderr.write("[blockpage] %s - %s\n" % (self.client_address[0], format % args))
+        sys.stderr.write("[cerberus-blockpage] %s - %s\n" % (self.client_address[0], format % args))
 
 def serve_http(port):
     server = http.server.HTTPServer(("0.0.0.0", port), Handler)
     server.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    print("[blockpage] HTTP server on port %d" % port, flush=True)
+    print("[cerberus-blockpage] HTTP server on port %d" % port, flush=True)
     server.serve_forever()
 
 def serve_https(port, certfile, keyfile):
@@ -63,12 +63,12 @@ def serve_https(port, certfile, keyfile):
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     ctx.load_cert_chain(certfile, keyfile)
     server.socket = ctx.wrap_socket(server.socket, server_side=True)
-    print("[blockpage] HTTPS server on port %d" % port, flush=True)
+    print("[cerberus-blockpage] HTTPS server on port %d" % port, flush=True)
     server.serve_forever()
 
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 80
     if port == 443:
-        serve_https(port, "/opt/blocker/blockpage.crt", "/opt/blocker/blockpage.key")
+        serve_https(port, "/opt/cerberus/blockpage.crt", "/opt/cerberus/blockpage.key")
     else:
         serve_http(port)
