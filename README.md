@@ -16,6 +16,7 @@ A self-hardening content filter for Arch Linux that blocks adult content and loc
 - **Watchdog** — systemd timer verifies blocking every 5 minutes and re-applies if missing
 - **Firefox DoH disabled** — automatically sets `network.trr.mode = 5` in all Firefox profiles
 - **Faillock** — 3 wrong sudo attempts = 10 minute lockout
+- **SafeSearch enforcement** — redirects Google, YouTube, and Bing to their SafeSearch IPs via hosts entries
 - **No-password sudo** — `cerberus` CLI runs via passwordless sudo for the configured user only
 
 ## Installation
@@ -38,6 +39,8 @@ cerberus block rm <domain>       Remove domain from custom block list
 cerberus block list              List custom blocked domains
 cerberus whitelist add <domain>  Add domain to whitelist
 cerberus whitelist rm <domain>   Remove domain from whitelist
+cerberus safesearch list         Show SafeSearch redirects
+cerberus safesearch apply        Apply SafeSearch redirects
 cerberus update                  Refresh blocklist from internet
 ```
 

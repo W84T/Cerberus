@@ -25,6 +25,7 @@ Commands:
   block list              Show custom blocked domains
   whitelist add <domain>  Add domain to whitelist
   whitelist rm <domain>   Remove domain from whitelist
+  safesearch [list|apply] Show or apply SafeSearch redirects
   update                  Refresh blocklist from internet
   help                    Show this help
 EOF
@@ -76,6 +77,11 @@ case "${1:-help}" in
     fi
     if [[ -f "$CUSTOM_BLOCK_FILE" ]] && [[ -s "$CUSTOM_BLOCK_FILE" ]]; then
       echo "  Custom blocked:  $(wc -l < "$CUSTOM_BLOCK_FILE") domains"
+    fi
+    if grep -q "# Cerberus SafeSearch" /etc/hosts 2>/dev/null; then
+      echo "  SafeSearch:      ACTIVE ($(grep -c '^216\.239\.38\.120\|^13\.107\.21\.200' /etc/hosts 2>/dev/null || echo '?') redirects)"
+    else
+      echo "  SafeSearch:      OFF"
     fi
     ;;
 
@@ -143,7 +149,7 @@ case "${1:-help}" in
     action="${2:-}"
     domain="${3:-}"
     if [[ -z "$action" || -z "$domain" ]]; then
-        echo "Usage: cerberus whitelist add|rm <domain>"
+      echo "Usage: cerberus whitelist add|rm <domain>"
       exit 1
     fi
     case "$action" in
@@ -162,7 +168,28 @@ case "${1:-help}" in
         "$CORE" apply
         ;;
       *)
-      echo "Usage: cerberus whitelist add|rm <domain>"
+        echo "Usage: cerberus whitelist add|rm <domain>"
+        ;;
+    esac
+    ;;
+
+  safesearch)
+    action="${2:-}"
+    case "$action" in
+      list)
+        echo "=== SafeSearch Redirects ==="
+        if grep -q "# Cerberus SafeSearch" /etc/hosts 2>/dev/null; then
+          grep -A 100 "# Cerberus SafeSearch" /etc/hosts | grep -v "^#" | grep -v "^$"
+        else
+          echo "Not applied."
+        fi
+        ;;
+      apply)
+        "$CORE" safesearch
+        echo "SafeSearch applied."
+        ;;
+      *)
+        echo "Usage: cerberus safesearch list|apply"
         ;;
     esac
     ;;

@@ -7,6 +7,24 @@ UNLOCK_FILE="/opt/cerberus/.unlock"
 CUSTOM_BLOCK_FILE="${CUSTOM_BLOCK_FILE:-/opt/cerberus/custom-block.txt}"
 log() { echo "[cerberus] $(date '+%H:%M:%S') $*"; }
 
+SAFESEARCH_MARKER="# Cerberus SafeSearch"
+
+apply_safesearch() {
+  lsattr /etc/hosts 2>/dev/null | grep -q '^....i' && chattr -i /etc/hosts 2>/dev/null || true
+  local tmp; tmp=$(mktemp)
+  grep -vF "$SAFESEARCH_MARKER" /etc/hosts > "$tmp" 2>/dev/null || true
+  cp "$tmp" /etc/hosts; rm -f "$tmp"
+  sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' /etc/hosts 2>/dev/null || true
+  {
+    echo ""
+    echo "$SAFESEARCH_MARKER"
+    echo "# $(date '+%Y-%m-%d %H:%M')"
+    for entry in "${SAFESEARCH_REDIRECTS[@]}"; do echo "$entry"; done
+  } >> /etc/hosts
+  chattr +i /etc/hosts 2>/dev/null || true
+  log "SafeSearch redirects applied (${#SAFESEARCH_REDIRECTS[@]} entries)"
+}
+
 apply_hosts() {
   local tmp="" marker_found=false custom_domains="" old_hash="" new_hash=""
   grep -qF "$MARKER" /etc/hosts 2>/dev/null && marker_found=true
@@ -132,7 +150,7 @@ check_unlock() {
 }
 
 do_lock() {
-  apply_hosts; apply_iptables
+  apply_hosts; apply_safesearch; apply_iptables
   for loc in "${BACKUP_LOCATIONS[@]}"; do [[ -f "$loc" ]] && chattr +i "$loc" 2>/dev/null || true; done
   chattr +i /etc/hosts 2>/dev/null || true; chattr +i "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
   log "System locked"
@@ -157,11 +175,12 @@ block_rm() {
 }
 
 case "${1:-apply}" in
-  apply)     apply_hosts; apply_iptables; self_heal ;;
+  apply)     apply_hosts; apply_safesearch; apply_iptables; self_heal ;;
   check)     verify_blocking; self_heal; check_unlock ;;
   lock)      do_lock ;;
   block_add) block_add "${2:-}" ;;
   block_rm)  block_rm "${2:-}" ;;
+  safesearch) apply_safesearch ;;
   status)    save_state; cat /var/lib/cerberus/state 2>/dev/null || echo "state unavailable" ;;
-  *)         echo "Usage: cerberus {apply|check|lock|block_add|block_rm|status}"; exit 1 ;;
+  *)         echo "Usage: cerberus {apply|check|lock|block_add|block_rm|safesearch|status}"; exit 1 ;;
 esac

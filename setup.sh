@@ -38,6 +38,16 @@ BACKUP_LOCATIONS=(
   "/home/w84t/.local/share/applications/.update"
 )
 
+# SafeSearch redirects — forces search engines to use their SafeSearch IP
+SAFESEARCH_REDIRECTS=(
+  "216.239.38.120 google.com"
+  "216.239.38.120 www.google.com"
+  "216.239.38.120 youtube.com"
+  "216.239.38.120 www.youtube.com"
+  "13.107.21.200 bing.com"
+  "13.107.21.200 www.bing.com"
+)
+
 CUSTOM_BLOCK_FILE="/opt/cerberus/custom-block.txt"
 CONFEOF
 
@@ -51,6 +61,23 @@ MARKER="# Blocked domains - Cerberus v1"
 UNLOCK_FILE="/opt/cerberus/.unlock"
 CUSTOM_BLOCK_FILE="${CUSTOM_BLOCK_FILE:-/opt/cerberus/custom-block.txt}"
 log() { echo "[cerberus] $(date '+%H:%M:%S') $*"; }
+SAFESEARCH_MARKER="# Cerberus SafeSearch"
+
+apply_safesearch() {
+  lsattr /etc/hosts 2>/dev/null | grep -q '^....i' && chattr -i /etc/hosts 2>/dev/null || true
+  local tmp; tmp=$(mktemp)
+  grep -vF "$SAFESEARCH_MARKER" /etc/hosts > "$tmp" 2>/dev/null || true
+  cp "$tmp" /etc/hosts; rm -f "$tmp"
+  sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' /etc/hosts 2>/dev/null || true
+  {
+    echo ""
+    echo "$SAFESEARCH_MARKER"
+    echo "# $(date '+%Y-%m-%d %H:%M')"
+    for entry in "${SAFESEARCH_REDIRECTS[@]}"; do echo "$entry"; done
+  } >> /etc/hosts
+  chattr +i /etc/hosts 2>/dev/null || true
+  log "SafeSearch redirects applied (${#SAFESEARCH_REDIRECTS[@]} entries)"
+}
 
 apply_hosts() {
   local tmp="" marker_found=false custom_domains="" old_hash="" new_hash=""
@@ -177,7 +204,7 @@ check_unlock() {
 }
 
 do_lock() {
-  apply_hosts; apply_iptables
+  apply_hosts; apply_safesearch; apply_iptables
   for loc in "${BACKUP_LOCATIONS[@]}"; do [[ -f "$loc" ]] && chattr +i "$loc" 2>/dev/null || true; done
   chattr +i /etc/hosts 2>/dev/null || true; chattr +i "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
   log "System locked"
@@ -202,13 +229,14 @@ block_rm() {
 }
 
 case "${1:-apply}" in
-  apply)     apply_hosts; apply_iptables; self_heal ;;
+  apply)     apply_hosts; apply_safesearch; apply_iptables; self_heal ;;
   check)     verify_blocking; self_heal; check_unlock ;;
   lock)      do_lock ;;
   block_add) block_add "${2:-}" ;;
   block_rm)  block_rm "${2:-}" ;;
+  safesearch) apply_safesearch ;;
   status)    save_state; cat /var/lib/cerberus/state 2>/dev/null || echo "state unavailable" ;;
-  *)         echo "Usage: cerberus {apply|check|lock|block_add|block_rm|status}"; exit 1 ;;
+  *)         echo "Usage: cerberus {apply|check|lock|block_add|block_rm|safesearch|status}"; exit 1 ;;
 esac
 COREEOF
 
@@ -234,6 +262,7 @@ Commands:
   block list              Show custom blocked domains
   whitelist add <domain>  Add domain to whitelist
   whitelist rm <domain>   Remove domain from whitelist
+  safesearch [list|apply] Show or apply SafeSearch redirects
   update                  Refresh blocklist from internet
   help                    Show this help
 EOF
@@ -256,6 +285,11 @@ case "${1:-help}" in
       (( now < expiry )) && echo "  Unlock pending:  $((expiry-now))s remaining" || echo "  Unlock pending:  expired (will apply on next check)"
     else echo "  Unlock pending:  NO"; fi
     [[ -f "$CUSTOM_BLOCK_FILE" ]] && [[ -s "$CUSTOM_BLOCK_FILE" ]] && echo "  Custom blocked:  $(wc -l < "$CUSTOM_BLOCK_FILE") domains"
+    if grep -q "# Cerberus SafeSearch" /etc/hosts 2>/dev/null; then
+      echo "  SafeSearch:      ACTIVE ($(grep -c '^216\.239\.38\.120\|^13\.107\.21\.200' /etc/hosts 2>/dev/null || echo '?') redirects)"
+    else
+      echo "  SafeSearch:      OFF"
+    fi
     ;;
   lock)    "$CORE" lock ;;
   unlock)  duration="${2:-24h}"; seconds=$(parse_duration "$duration"); expiry=$(($(date +%s)+seconds))
@@ -278,6 +312,26 @@ case "${1:-help}" in
       rm)  sed -i "/\"$domain\"/d" "$CONFIG"; echo "Removed $domain from whitelist."; "$CORE" apply ;;
       *)   echo "Usage: cerberus whitelist add|rm <domain>" ;;
     esac ;;
+  safesearch)
+    action="${2:-}"
+    case "$action" in
+      list)
+        echo "=== SafeSearch Redirects ==="
+        if grep -q "# Cerberus SafeSearch" /etc/hosts 2>/dev/null; then
+          grep -A 100 "# Cerberus SafeSearch" /etc/hosts | grep -v "^#" | grep -v "^$"
+        else
+          echo "Not applied."
+        fi
+        ;;
+      apply)
+        "$CORE" safesearch
+        echo "SafeSearch applied."
+        ;;
+      *)
+        echo "Usage: cerberus safesearch list|apply"
+        ;;
+    esac
+    ;;
   update) echo "Updating blocklist..."; "$CORE" apply; echo "Done." ;;
   help|*) usage ;;
 esac
