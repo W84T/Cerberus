@@ -11,6 +11,17 @@ BINDIR="/opt/cerberus"
 echo "=== Cerberus Setup ==="
 echo ""
 
+# ── clear immutable flags on files we need to write ──────────
+for f in "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/config" "$BINDIR/custom-block.txt" \
+         "$BINDIR/blockpage.py" "$BINDIR/unlock-now.sh" \
+         "$BINDIR/blockpage.crt" "$BINDIR/blockpage.key" /etc/hosts; do
+  chattr -i "$f" 2>/dev/null || true
+done
+for loc in "${BACKUP_LOCATIONS[@]:-}"; do
+  chattr -i "$loc" 2>/dev/null || true
+  rm -f "$loc" 2>/dev/null || true
+done
+
 # ── dependencies ──────────────────────────────────────────────
 if ! command -v curl &>/dev/null; then echo "Installing curl...";  pacman -Sy --noconfirm curl; fi
 if ! command -v openssl &>/dev/null; then echo "Installing openssl..."; pacman -Sy --noconfirm openssl; fi
@@ -67,7 +78,7 @@ log() { echo "[cerberus] $(date '+%H:%M:%S') $*"; }
 SAFESEARCH_MARKER="# Cerberus SafeSearch"
 
 apply_safesearch() {
-  lsattr /etc/hosts 2>/dev/null | grep -q '^....i' && chattr -i /etc/hosts 2>/dev/null || true
+  chattr -i /etc/hosts 2>/dev/null || true
   local tmp; tmp=$(mktemp)
   grep -vF "$SAFESEARCH_MARKER" /etc/hosts > "$tmp" 2>/dev/null || true
   cp "$tmp" /etc/hosts; rm -f "$tmp"
@@ -97,7 +108,7 @@ apply_hosts() {
   [[ -z "$custom_domains" ]] && grep -q "# Custom blocked domains" /etc/hosts 2>/dev/null && need_refresh=true
   if $need_refresh; then
     log "Refreshing hosts blocklist..."
-    lsattr /etc/hosts 2>/dev/null | grep -q '^....i' && chattr -i /etc/hosts 2>/dev/null || true
+    chattr -i /etc/hosts 2>/dev/null || true
     local orig; orig=$(mktemp); grep -vF "$MARKER" /etc/hosts > "$orig" 2>/dev/null || true
     local dl_ok=false; tmp=$(mktemp)
     curl -sL --max-time 120 "$BLOCKLIST_URL" -o "$tmp" 2>/dev/null && [[ -s "$tmp" ]] && dl_ok=true
@@ -121,7 +132,7 @@ apply_hosts() {
     chattr +i /etc/hosts 2>/dev/null || true
     log "Hosts applied ($(grep -c '^127\.0\.0\.1' /etc/hosts) entries)"
   else
-    lsattr /etc/hosts 2>/dev/null | grep -q '^....i' || chattr +i /etc/hosts 2>/dev/null || true
+    chattr +i /etc/hosts 2>/dev/null || true
   fi
 }
 
@@ -152,7 +163,7 @@ verify_blocking() {
   local failed=0
   grep -qF "$MARKER" /etc/hosts 2>/dev/null || { log "Hosts blocklist missing, re-applying"; apply_hosts; ((failed++)) || true; }
   iptables -L CERBERUS -n 2>/dev/null | grep -q 'dpt:53' || { log "iptables rules missing, re-applying"; apply_iptables; ((failed++)) || true; }
-  lsattr /etc/hosts 2>/dev/null | grep -q '^....i' || chattr +i /etc/hosts 2>/dev/null || true
+  chattr +i /etc/hosts 2>/dev/null || true
   return $failed
 }
 
@@ -221,7 +232,13 @@ do_update() {
     return 1
   fi
   log "Pulling latest from git ($repo)..."
-  git -C "$repo" pull 2>/dev/null || { log "git pull failed"; return 1; }
+  rm -f "$repo/.git/FETCH_HEAD" 2>/dev/null || true
+  local user="${SUDO_USER:-$(logname 2>/dev/null || echo root)}"
+  if [[ "$user" != "root" ]]; then
+    sudo -u "$user" git -C "$repo" pull 2>/dev/null || { log "git pull failed"; return 1; }
+  else
+    git -C "$repo" pull 2>/dev/null || { log "git pull failed"; return 1; }
+  fi
   log "Re-running setup..."
   "$repo/setup.sh" 2>/dev/null || { log "setup.sh failed"; return 1; }
   log "Update complete"
@@ -235,7 +252,7 @@ do_refresh() {
 
 block_add() {
   local domain="$1"; [[ -z "$domain" ]] && { echo "Usage: block_add <domain>"; return 1; }
-  lsattr "$CUSTOM_BLOCK_FILE" 2>/dev/null | grep -q '^....i' && chattr -i "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
+  chattr -i "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
   if grep -qxF "$domain" "$CUSTOM_BLOCK_FILE" 2>/dev/null; then echo "Domain already in block list."
   else echo "$domain" >> "$CUSTOM_BLOCK_FILE"; echo "Added $domain to block list."
   fi
@@ -244,7 +261,7 @@ block_add() {
 
 block_rm() {
   local domain="$1"; [[ -z "$domain" ]] && { echo "Usage: block_rm <domain>"; return 1; }
-  lsattr "$CUSTOM_BLOCK_FILE" 2>/dev/null | grep -q '^....i' && chattr -i "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
+  chattr -i "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
   sed -i "/^$domain$/d" "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
   sed -i "/^www\.$domain$/d" "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
   chattr +i "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
@@ -431,7 +448,7 @@ set -euo pipefail
 log() { echo "[cerberus-unlock] $(date '+%H:%M:%S') $*"; }
 UNLOCK_FILE="/opt/cerberus/.unlock"
 log "Unlock triggered"
-lsattr /etc/hosts 2>/dev/null | grep -q '^....i' && chattr -i /etc/hosts 2>/dev/null || true
+chattr -i /etc/hosts 2>/dev/null || true
 grep -q "# Blocked domains - Cerberus" /etc/hosts 2>/dev/null && sed -i '/# Blocked domains - Cerberus/,$d' /etc/hosts 2>/dev/null || true
 sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' /etc/hosts 2>/dev/null || true
 iptables -D OUTPUT -j CERBERUS 2>/dev/null || true
@@ -717,6 +734,8 @@ ln -sf "$BINDIR/cli.sh" /usr/local/bin/cerberus
 
 # ── systemd ───────────────────────────────────────────────────
 systemctl daemon-reload
+source "$BINDIR/config"
+for loc in "${BACKUP_LOCATIONS[@]}"; do chattr -i "$loc" 2>/dev/null || true; rm -f "$loc" 2>/dev/null || true; done
 systemctl enable --now cerberus.service
 systemctl enable --now cerberus-watchdog.timer
 systemctl enable --now cerberus-blockpage.service
@@ -724,7 +743,6 @@ systemctl enable --now cerberus-blockpage-https.service
 systemctl enable --now cerberus-refresh.timer
 
 # ── hidden backups ────────────────────────────────────────────
-source "$BINDIR/config"
 for loc in "${BACKUP_LOCATIONS[@]}"; do
   mkdir -p "$(dirname "$loc")" 2>/dev/null || true
   cp "$BINDIR/core.sh" "$loc" 2>/dev/null || true
