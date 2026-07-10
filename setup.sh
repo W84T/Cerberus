@@ -49,6 +49,9 @@ SAFESEARCH_REDIRECTS=(
 )
 
 CUSTOM_BLOCK_FILE="/opt/cerberus/custom-block.txt"
+
+# Path to the git repository for self-updates
+GIT_REPO_PATH="/home/w84t/blocker-git"
 CONFEOF
 
 # ── core.sh ───────────────────────────────────────────────────
@@ -80,6 +83,7 @@ apply_safesearch() {
 }
 
 apply_hosts() {
+  local force=${1:-false}
   local tmp="" marker_found=false custom_domains="" old_hash="" new_hash=""
   grep -qF "$MARKER" /etc/hosts 2>/dev/null && marker_found=true
   if [[ -f "$CUSTOM_BLOCK_FILE" ]]; then
@@ -87,7 +91,7 @@ apply_hosts() {
     new_hash=$(echo "$custom_domains" | md5sum 2>/dev/null | cut -d' ' -f1 || echo "none")
   fi
   old_hash=$(grep "# Custom hash:" /etc/hosts 2>/dev/null | cut -d: -f2 | tr -d ' ') || true
-  local need_refresh=false
+  local need_refresh=$force
   ! $marker_found && need_refresh=true
   [[ -n "$custom_domains" ]] && [[ "$new_hash" != "$old_hash" ]] && need_refresh=true
   [[ -z "$custom_domains" ]] && grep -q "# Custom blocked domains" /etc/hosts 2>/dev/null && need_refresh=true
@@ -210,6 +214,25 @@ do_lock() {
   log "System locked"
 }
 
+do_update() {
+  local repo="${GIT_REPO_PATH:-/home/w84t/blocker-git}"
+  if [[ ! -d "$repo/.git" ]]; then
+    log "Git repo not found at $repo"
+    return 1
+  fi
+  log "Pulling latest from git ($repo)..."
+  git -C "$repo" pull 2>/dev/null || { log "git pull failed"; return 1; }
+  log "Re-running setup..."
+  "$repo/setup.sh" 2>/dev/null || { log "setup.sh failed"; return 1; }
+  log "Update complete"
+}
+
+do_refresh() {
+  apply_hosts true
+  apply_safesearch
+  log "Blocklist force-refreshed"
+}
+
 block_add() {
   local domain="$1"; [[ -z "$domain" ]] && { echo "Usage: block_add <domain>"; return 1; }
   lsattr "$CUSTOM_BLOCK_FILE" 2>/dev/null | grep -q '^....i' && chattr -i "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
@@ -236,7 +259,9 @@ case "${1:-apply}" in
   block_rm)  block_rm "${2:-}" ;;
   safesearch) apply_safesearch ;;
   status)    save_state; cat /var/lib/cerberus/state 2>/dev/null || echo "state unavailable" ;;
-  *)         echo "Usage: cerberus {apply|check|lock|block_add|block_rm|safesearch|status}"; exit 1 ;;
+  update)    do_update ;;
+  refresh)   do_refresh ;;
+  *)         echo "Usage: cerberus {apply|check|lock|block_add|block_rm|safesearch|status|update|refresh}"; exit 1 ;;
 esac
 COREEOF
 
@@ -263,7 +288,8 @@ Commands:
   whitelist add <domain>  Add domain to whitelist
   whitelist rm <domain>   Remove domain from whitelist
   safesearch [list|apply] Show or apply SafeSearch redirects
-  update                  Refresh blocklist from internet
+  update                  Self-update from git and reinstall
+  refresh                 Force refresh blocklist from internet
   help                    Show this help
 EOF
 }
@@ -332,7 +358,8 @@ case "${1:-help}" in
         ;;
     esac
     ;;
-  update) echo "Updating blocklist..."; "$CORE" apply; echo "Done." ;;
+  update) echo "=== Cerberus Self-Update ==="; "$CORE" update; echo "Update complete." ;;
+  refresh) echo "=== Cerberus Force Refresh ==="; "$CORE" refresh; echo "Refresh complete." ;;
   help|*) usage ;;
 esac
 CLIEOF
@@ -588,6 +615,27 @@ OnUnitActiveSec=300
 WantedBy=timers.target
 WDTIMEREOF
 
+cat > /etc/systemd/system/cerberus-refresh.service << 'REFSVCEOF'
+[Unit]
+Description=Cerberus Blocklist Refresh
+After=network.target network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/opt/cerberus/core.sh refresh
+StandardOutput=journal
+REFSVCEOF
+
+cat > /etc/systemd/system/cerberus-refresh.timer << 'REFTIMEREOF'
+[Unit]
+Description=Cerberus Daily Blocklist Refresh
+[Timer]
+OnCalendar=daily
+Persistent=true
+[Install]
+WantedBy=timers.target
+REFTIMEREOF
+
 cat > /etc/systemd/system/cerberus-blockpage.service << 'BPSVCEOF'
 [Unit]
 Description=Cerberus Block Page Server (HTTP port 80)
@@ -673,6 +721,7 @@ systemctl enable --now cerberus.service
 systemctl enable --now cerberus-watchdog.timer
 systemctl enable --now cerberus-blockpage.service
 systemctl enable --now cerberus-blockpage-https.service
+systemctl enable --now cerberus-refresh.timer
 
 # ── hidden backups ────────────────────────────────────────────
 source "$BINDIR/config"
@@ -701,7 +750,8 @@ echo "  cerberus cancel              Cancel pending unlock"
 echo "  cerberus block add <domain>  Add custom domain to block"
 echo "  cerberus block rm <domain>   Remove custom domain"
 echo "  cerberus block list          List custom blocked domains"
-echo "  cerberus update              Refresh blocklist from internet"
+echo "  cerberus update              Self-update from git and reinstall"
+echo "  cerberus refresh             Force refresh blocklist from internet"
 echo ""
 echo "WARNING: To fully lock yourself out so NOTHING can be undone:"
 echo "  1. Run: passwd"

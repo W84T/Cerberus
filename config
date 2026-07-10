@@ -26,3 +26,6 @@ SAFESEARCH_REDIRECTS=(
 )
 
 CUSTOM_BLOCK_FILE="/opt/cerberus/custom-block.txt"
+
+# Path to the git repository for self-updates
+GIT_REPO_PATH="/home/w84t/blocker-git"

@@ -26,7 +26,8 @@ Commands:
   whitelist add <domain>  Add domain to whitelist
   whitelist rm <domain>   Remove domain from whitelist
   safesearch [list|apply] Show or apply SafeSearch redirects
-  update                  Refresh blocklist from internet
+  update                  Self-update from git and reinstall
+  refresh                 Force refresh blocklist from internet
   help                    Show this help
 EOF
 }
@@ -195,9 +196,14 @@ case "${1:-help}" in
     ;;
 
   update)
-    echo "Updating blocklist..."
-    "$CORE" apply
-    echo "Done."
+    echo "=== Cerberus Self-Update ==="
+    "$CORE" update
+    echo "Update complete."
+    ;;
+  refresh)
+    echo "=== Cerberus Force Refresh ==="
+    "$CORE" refresh
+    echo "Refresh complete."
     ;;
 
   help|*)

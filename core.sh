@@ -26,6 +26,7 @@ apply_safesearch() {
 }
 
 apply_hosts() {
+  local force=${1:-false}
   local tmp="" marker_found=false custom_domains="" old_hash="" new_hash=""
   grep -qF "$MARKER" /etc/hosts 2>/dev/null && marker_found=true
   if [[ -f "$CUSTOM_BLOCK_FILE" ]]; then
@@ -33,7 +34,7 @@ apply_hosts() {
     new_hash=$(echo "$custom_domains" | md5sum 2>/dev/null | cut -d' ' -f1 || echo "none")
   fi
   old_hash=$(grep "# Custom hash:" /etc/hosts 2>/dev/null | cut -d: -f2 | tr -d ' ') || true
-  local need_refresh=false
+  local need_refresh=$force
   ! $marker_found && need_refresh=true
   [[ -n "$custom_domains" ]] && [[ "$new_hash" != "$old_hash" ]] && need_refresh=true
   [[ -z "$custom_domains" ]] && grep -q "# Custom blocked domains" /etc/hosts 2>/dev/null && need_refresh=true
@@ -156,6 +157,25 @@ do_lock() {
   log "System locked"
 }
 
+do_update() {
+  local repo="${GIT_REPO_PATH:-/home/w84t/blocker-git}"
+  if [[ ! -d "$repo/.git" ]]; then
+    log "Git repo not found at $repo"
+    return 1
+  fi
+  log "Pulling latest from git ($repo)..."
+  git -C "$repo" pull 2>/dev/null || { log "git pull failed"; return 1; }
+  log "Re-running setup..."
+  "$repo/setup.sh" 2>/dev/null || { log "setup.sh failed"; return 1; }
+  log "Update complete"
+}
+
+do_refresh() {
+  apply_hosts true
+  apply_safesearch
+  log "Blocklist force-refreshed"
+}
+
 block_add() {
   local domain="$1"; [[ -z "$domain" ]] && { echo "Usage: block_add <domain>"; return 1; }
   lsattr "$CUSTOM_BLOCK_FILE" 2>/dev/null | grep -q '^....i' && chattr -i "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
@@ -182,5 +202,7 @@ case "${1:-apply}" in
   block_rm)  block_rm "${2:-}" ;;
   safesearch) apply_safesearch ;;
   status)    save_state; cat /var/lib/cerberus/state 2>/dev/null || echo "state unavailable" ;;
-  *)         echo "Usage: cerberus {apply|check|lock|block_add|block_rm|safesearch|status}"; exit 1 ;;
+  update)    do_update ;;
+  refresh)   do_refresh ;;
+  *)         echo "Usage: cerberus {apply|check|lock|block_add|block_rm|safesearch|status|update|refresh}"; exit 1 ;;
 esac
