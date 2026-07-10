@@ -5,6 +5,7 @@ SCRIPT_HASH=$(sha256sum "$0" 2>/dev/null | cut -d' ' -f1)
 MARKER="# Blocked domains - Cerberus v1"
 UNLOCK_FILE="/opt/cerberus/.unlock"
 CUSTOM_BLOCK_FILE="${CUSTOM_BLOCK_FILE:-/opt/cerberus/custom-block.txt}"
+BINDIR="/opt/cerberus"
 log() { echo "[cerberus] $(date '+%H:%M:%S') $*"; }
 
 SAFESEARCH_MARKER="# Cerberus SafeSearch"
@@ -171,8 +172,19 @@ do_update() {
   else
     git -C "$repo" pull 2>/dev/null || { log "git pull failed"; return 1; }
   fi
-  log "Re-running setup..."
-  "$repo/setup.sh" 2>/dev/null || { log "setup.sh failed"; return 1; }
+  log "Updating installed files..."
+  chattr -i "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/config" \
+         "$BINDIR/custom-block.txt" 2>/dev/null || true
+  cp "$repo/core.sh" "$BINDIR/core.sh"
+  cp "$repo/cli.sh" "$BINDIR/cli.sh"
+  cp "$repo/config" "$BINDIR/config"
+  [[ -f "$repo/custom-block.txt" ]] && cp "$repo/custom-block.txt" "$BINDIR/custom-block.txt" || true
+  chmod +x "$BINDIR/core.sh" "$BINDIR/cli.sh"
+  log "Re-applying rules (skipping blocklist download)..."
+  source "$BINDIR/config"
+  apply_safesearch
+  apply_iptables
+  chattr +i "$BINDIR/core.sh" "$BINDIR/custom-block.txt" 2>/dev/null || true
   log "Update complete"
 }
 
