@@ -12,9 +12,7 @@ SAFESEARCH_MARKER="# Cerberus SafeSearch"
 
 apply_safesearch() {
   chattr -i /etc/hosts 2>/dev/null || true
-  local tmp; tmp=$(mktemp)
-  grep -vF "$SAFESEARCH_MARKER" /etc/hosts > "$tmp" 2>/dev/null || true
-  cp "$tmp" /etc/hosts; rm -f "$tmp"
+  sed -i "/$SAFESEARCH_MARKER/,\$d" /etc/hosts 2>/dev/null || true
   sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' /etc/hosts 2>/dev/null || true
   {
     echo ""
