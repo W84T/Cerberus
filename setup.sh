@@ -53,8 +53,6 @@ BACKUP_LOCATIONS=(
 SAFESEARCH_REDIRECTS=(
   "216.239.38.120 google.com"
   "216.239.38.120 www.google.com"
-  "216.239.38.120 youtube.com"
-  "216.239.38.120 www.youtube.com"
   "13.107.21.200 bing.com"
   "13.107.21.200 www.bing.com"
 )
