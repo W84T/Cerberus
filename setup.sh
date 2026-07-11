@@ -248,7 +248,7 @@ do_update() {
 
   if [[ "$commits" -eq 0 ]]; then
     log "No updates available"
-    return 0
+    return 2
   fi
 
   log "$commits new commit(s) available, updating..."
@@ -405,7 +405,7 @@ case "${1:-help}" in
         ;;
     esac
     ;;
-  update) echo "=== Cerberus Self-Update ==="; "$CORE" update; echo "Update complete." ;;
+  update) echo "=== Cerberus Self-Update ==="; "$CORE" update || rc=$?; [[ ${rc:-1} -eq 2 ]] && echo "Nothing to update." || echo "Update complete." ;;
   refresh) echo "=== Cerberus Force Refresh ==="; "$CORE" refresh; echo "Refresh complete." ;;
   help|*) usage ;;
 esac

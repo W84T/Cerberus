@@ -197,8 +197,8 @@ case "${1:-help}" in
 
   update)
     echo "=== Cerberus Self-Update ==="
-    "$CORE" update
-    echo "Update complete."
+    "$CORE" update || rc=$?
+    [[ ${rc:-1} -eq 2 ]] && echo "Nothing to update." || echo "Update complete."
     ;;
   refresh)
     echo "=== Cerberus Force Refresh ==="

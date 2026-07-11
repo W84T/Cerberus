@@ -182,7 +182,7 @@ do_update() {
 
   if [[ "$commits" -eq 0 ]]; then
     log "No updates available"
-    return 0
+    return 2
   fi
 
   log "$commits new commit(s) available, updating..."
