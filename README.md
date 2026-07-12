@@ -4,7 +4,7 @@ A self-hardening content filter for Arch Linux that blocks adult content and loc
 
 ## Features
 
-- **1.5M+ blocked domains** — downloads and periodically refreshes from blocklistproject.github.io
+- **~12M blocked domains** — downloads and periodically refreshes from blocklistproject.github.io
 - **Custom block list** — add your own domains alongside the main list
 - **Whitelist** — exempt specific domains from blocking
 - **DNS lockdown** — iptables blocks port 53 (DNS), 853 (DoT), and 443 (DoH) to prevent circumvention
@@ -12,11 +12,11 @@ A self-hardening content filter for Arch Linux that blocks adult content and loc
 - **Immutable hosts** — `/etc/hosts` is set `chattr +i` to prevent tampering
 - **Self-healing** — hidden backup copies (4 locations) restore the core script if corrupted or deleted
 - **Block page server** — serves a "Site Blocked" page on ports 80 (HTTP) and 443 (HTTPS) with a self-signed cert
-- **Timed unlock** — request a temporary unlock (default 24h); automatically re-locks when expired
+- **Timed unlock** — request an auto-unlock after N hours (default 24); runs `unlock-now.sh` when the timer expires
 - **Watchdog** — systemd timer verifies blocking every 5 minutes and re-applies if missing
 - **Firefox DoH disabled** — automatically sets `network.trr.mode = 5` in all Firefox profiles
 - **Faillock** — 3 wrong sudo attempts = 10 minute lockout
-- **SafeSearch enforcement** — redirects Google, YouTube, and Bing to their SafeSearch IPs via hosts entries
+- **SafeSearch enforcement** — redirects Google and Bing to their SafeSearch IPs via hosts entries
 - **No-password sudo** — `cerberus` CLI runs via passwordless sudo for the configured user only
 
 ## Installation
@@ -32,7 +32,7 @@ This installs everything under `/opt/cerberus/`, sets up systemd services, creat
 ```
 cerberus status                  Show blocking status
 cerberus lock                    Apply and lock immediately
-cerberus unlock [duration]       Request unlock (default: 24h, e.g. 1h, 30m)
+cerberus unlock [hours]          Auto-unlock after N hours (min: 1, default: 24)
 cerberus cancel                  Cancel pending unlock
 cerberus block add <domain>      Add domain to custom block list
 cerberus block rm <domain>       Remove domain from custom block list
@@ -41,7 +41,8 @@ cerberus whitelist add <domain>  Add domain to whitelist
 cerberus whitelist rm <domain>   Remove domain from whitelist
 cerberus safesearch list         Show SafeSearch redirects
 cerberus safesearch apply        Apply SafeSearch redirects
-cerberus update                  Refresh blocklist from internet
+cerberus update                  Self-update from git and reapply rules
+cerberus refresh                 Force refresh blocklist from internet
 ```
 
 ## Architecture
@@ -58,6 +59,9 @@ cerberus update                  Refresh blocklist from internet
 | `cerberus-watchdog.timer` | systemd | Runs every 5 min to verify blocking |
 | `cerberus-blockpage.service` | systemd | Serves block page on port 80 |
 | `cerberus-blockpage-https.service` | systemd | Serves block page on port 443 |
+| `cerberus-refresh.service` | systemd | Fetches fresh blocklist on start |
+| `cerberus-refresh.timer` | systemd | Triggers refresh daily at midnight |
+| `/var/lib/cerberus/state` | file | Entry count, iptables status, immutable state |
 
 Backup copies of `core.sh` are stored in hidden locations (listed in `config`) and are also made immutable. If the main script is altered or deleted, it's restored from backup on the next `check` cycle.
 

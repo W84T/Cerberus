@@ -757,14 +757,15 @@ for profile in /home/*/.mozilla/firefox/*.default*/prefs.js; do
 done
 
 # ── faillock (3 tries, 10 min lockout) ────────────────────────
-if grep -q "^auth.*required.*pam_faillock.so" /etc/pam.d/sudo 2>/dev/null; then
-  echo "faillock already configured"
-else
+if grep -q "^auth.*required.*pam_faillock.so" /etc/pam.d/system-auth 2>/dev/null; then
   cat > /etc/security/faillock.conf << 'FAILEOF'
 deny = 3
 unlock_time = 600
 silent
 FAILEOF
+  echo "faillock configured (3 tries, 10 minute lockout)"
+else
+  echo "WARNING: pam_faillock.so not found in system-auth — faillock may not work"
 fi
 
 # ── permissions ───────────────────────────────────────────────
