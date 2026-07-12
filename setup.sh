@@ -340,8 +340,8 @@ EOF
 }
 
 parse_duration() {
-  local input="${1:-24h}" num="${input//[a-zA-Z]/}" unit="${input//[0-9]/}"
-  case "$unit" in s|S) echo $((num*1));; m|M) echo $((num*60));; h|H) echo $((num*3600));; d|D) echo $((num*86400));; *) echo $((num*3600));; esac
+  local input="${1:-24h}" num="${input//[a-zA-Z]/}" unit="${input//[0-9.]/}"
+  case "$unit" in s|S) awk "BEGIN{printf \"%d\\n\",$num*1}";; m|M) awk "BEGIN{printf \"%d\\n\",$num*60}";; h|H) awk "BEGIN{printf \"%d\\n\",$num*3600}";; d|D) awk "BEGIN{printf \"%d\\n\",$num*86400}";; *) awk "BEGIN{printf \"%d\\n\",$num*3600}";; esac
 }
 
 case "${1:-help}" in
