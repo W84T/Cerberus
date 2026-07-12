@@ -18,7 +18,7 @@ Usage: cerberus <command>
 Commands:
   status                  Show blocking status
   lock                    Apply and lock immediately
-  unlock [hours]          Request unlock after N hours (minimum: 1, default: 24)
+  unlock [hours]          Auto-unlock after N hours (minimum: 1, default: 24)
   cancel                  Cancel pending unlock
   block add <domain>      Add domain to block list
   block rm <domain>       Remove domain from block list
@@ -97,7 +97,7 @@ case "${1:-help}" in
     seconds=$(parse_duration "$duration")
     expiry=$(($(date +%s) + seconds))
     hours=$(awk "BEGIN {printf \"%.1f\", $seconds / 3600}")
-    echo "Unlock requested for $hours hours (expires $(date -d "@$expiry" '+%Y-%m-%d %H:%M'))"
+    echo "System will auto-unlock in $hours hour(s) (at $(date -d "@$expiry" '+%Y-%m-%d %H:%M'))"
     echo "Cancel with: cerberus cancel"
     echo "$expiry" > "$UNLOCK_FILE"
     ;;

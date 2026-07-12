@@ -325,7 +325,7 @@ Usage: cerberus <command>
 Commands:
   status                  Show blocking status
   lock                    Apply and lock immediately
-  unlock [hours]          Request unlock after N hours (minimum: 1, default: 24)
+  unlock [hours]          Auto-unlock after N hours (minimum: 1, default: 24)
   cancel                  Cancel pending unlock
   block add <domain>      Add domain to block list
   block rm <domain>       Remove domain from block list
@@ -376,7 +376,7 @@ case "${1:-help}" in
   lock)    "$CORE" lock ;;
   unlock)  duration="${2:-24}"; seconds=$(parse_duration "$duration"); expiry=$(($(date +%s)+seconds))
            hours=$(awk "BEGIN {printf \"%.1f\", $seconds / 3600}")
-           echo "Unlock requested for $hours hours (expires $(date -d "@$expiry" '+%Y-%m-%d %H:%M'))"
+           echo "System will auto-unlock in $hours hour(s) (at $(date -d "@$expiry" '+%Y-%m-%d %H:%M'))"
            echo "Cancel with: cerberus cancel"; echo "$expiry" > "$UNLOCK_FILE" ;;
   cancel)  [[ -f "$UNLOCK_FILE" ]] && { echo "Cancelling unlock request..."; echo "Are you sure? Waiting 10s. Ctrl+C to abort."; sleep 10; rm -f "$UNLOCK_FILE"; echo "Cancelled."; } || echo "No pending unlock request." ;;
   block)
@@ -803,7 +803,7 @@ echo "Cerberus is now active with 1.5M+ blocked domains"
 echo ""
 echo "Commands:"
 echo "  cerberus status              Check status"
-echo "  cerberus unlock [hours]   Request unlock (default: 24, minimum: 1)"
+echo "  cerberus unlock [hours]   Auto-unlock after N hours (default: 24, min: 1)"
 echo "  cerberus cancel              Cancel pending unlock"
 echo "  cerberus block add <domain>  Add custom domain to block"
 echo "  cerberus block rm <domain>   Remove custom domain"
