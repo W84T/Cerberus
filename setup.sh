@@ -325,7 +325,7 @@ Usage: cerberus <command>
 Commands:
   status                  Show blocking status
   lock                    Apply and lock immediately
-  unlock [duration]       Request unlock after a delay (default: 24h)
+  unlock [hours]          Request unlock after N hours (minimum: 1, default: 24)
   cancel                  Cancel pending unlock
   block add <domain>      Add domain to block list
   block rm <domain>       Remove domain from block list
@@ -340,8 +340,19 @@ EOF
 }
 
 parse_duration() {
-  local input="${1:-24h}" num="${input//[a-zA-Z]/}" unit="${input//[0-9.]/}"
-  case "$unit" in s|S) awk "BEGIN{printf \"%d\\n\",$num*1}";; m|M) awk "BEGIN{printf \"%d\\n\",$num*60}";; h|H) awk "BEGIN{printf \"%d\\n\",$num*3600}";; d|D) awk "BEGIN{printf \"%d\\n\",$num*86400}";; *) awk "BEGIN{printf \"%d\\n\",$num*3600}";; esac
+  local input num
+  input="${1:-24}"
+  num="${input//[a-zA-Z]/}"
+  if ! echo "$input" | grep -qE '^[0-9]+(\.[0-9]+)?h?$'; then
+    echo "Invalid duration. Use hours only (e.g. 1, 2, 24, 1.5). Minimum: 1 hour." >&2
+    exit 1
+  fi
+  seconds=$(awk "BEGIN {printf \"%d\\n\", $num * 3600}")
+  if [ "$seconds" -lt 3600 ]; then
+    echo "Minimum unlock duration is 1 hour." >&2
+    exit 1
+  fi
+  echo "$seconds"
 }
 
 case "${1:-help}" in
@@ -363,8 +374,9 @@ case "${1:-help}" in
     fi
     ;;
   lock)    "$CORE" lock ;;
-  unlock)  duration="${2:-24h}"; seconds=$(parse_duration "$duration"); expiry=$(($(date +%s)+seconds))
-           echo "Unlock requested in $duration (expires $(date -d "@$expiry" '+%Y-%m-%d %H:%M'))"
+  unlock)  duration="${2:-24}"; seconds=$(parse_duration "$duration"); expiry=$(($(date +%s)+seconds))
+           hours=$(awk "BEGIN {printf \"%.1f\", $seconds / 3600}")
+           echo "Unlock requested for $hours hours (expires $(date -d "@$expiry" '+%Y-%m-%d %H:%M'))"
            echo "Cancel with: cerberus cancel"; echo "$expiry" > "$UNLOCK_FILE" ;;
   cancel)  [[ -f "$UNLOCK_FILE" ]] && { echo "Cancelling unlock request..."; echo "Are you sure? Waiting 10s. Ctrl+C to abort."; sleep 10; rm -f "$UNLOCK_FILE"; echo "Cancelled."; } || echo "No pending unlock request." ;;
   block)
@@ -791,7 +803,7 @@ echo "Cerberus is now active with 1.5M+ blocked domains"
 echo ""
 echo "Commands:"
 echo "  cerberus status              Check status"
-echo "  cerberus unlock [duration]   Request unlock (default: 24h)"
+echo "  cerberus unlock [hours]   Request unlock (default: 24, minimum: 1)"
 echo "  cerberus cancel              Cancel pending unlock"
 echo "  cerberus block add <domain>  Add custom domain to block"
 echo "  cerberus block rm <domain>   Remove custom domain"
