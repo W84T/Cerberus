@@ -158,6 +158,7 @@ case "${1:-help}" in
     fi
     case "$action" in
       add)
+        domain=$(echo "$domain" | sed 's|^https\?://||; s|^www\.||')
         if grep -qF "$domain" "$CONFIG" 2>/dev/null; then
           echo "Domain already in whitelist."
         else

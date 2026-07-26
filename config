@@ -1,5 +1,6 @@
 # Whitelist domains (one per line, no wildcards)
 WHITELIST_DOMAINS=(
+  "mangadna.com"
   "tv8.egydead.live"
 )
 

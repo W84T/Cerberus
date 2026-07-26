@@ -391,7 +391,7 @@ case "${1:-help}" in
     action="${2:-}"; domain="${3:-}"
     [[ -z "$action" || -z "$domain" ]] && { echo "Usage: cerberus whitelist add|rm <domain>"; exit 1; }
     case "$action" in
-      add) grep -qF "$domain" "$CONFIG" 2>/dev/null && echo "Domain already in whitelist." || { sed -i "/^WHITELIST_DOMAINS=(/a\\  \"$domain\"" "$CONFIG"; echo "Added $domain to whitelist."; "$CORE" apply; } ;;
+      add) domain=$(echo "$domain" | sed 's|^https\?://||; s|^www\.||'); grep -qF "$domain" "$CONFIG" 2>/dev/null && echo "Domain already in whitelist." || { sed -i "/^WHITELIST_DOMAINS=(/a\\  \"$domain\"" "$CONFIG"; echo "Added $domain to whitelist."; "$CORE" apply; } ;;
       rm)  sed -i "/\"$domain\"/d" "$CONFIG"; echo "Removed $domain from whitelist."; "$CORE" apply ;;
       *)   echo "Usage: cerberus whitelist add|rm <domain>" ;;
     esac ;;
