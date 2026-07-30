@@ -280,6 +280,7 @@ do_refresh() {
 
 block_add() {
   local domain="$1"; [[ -z "$domain" ]] && { echo "Usage: block_add <domain>"; return 1; }
+  domain=$(echo "$domain" | sed 's|^https\?://||; s|/.*||; s|#.*||')
   chattr -i "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
   if grep -qxF "$domain" "$CUSTOM_BLOCK_FILE" 2>/dev/null; then echo "Domain already in block list."
   else echo "$domain" >> "$CUSTOM_BLOCK_FILE"; echo "Added $domain to block list."
@@ -289,6 +290,7 @@ block_add() {
 
 block_rm() {
   local domain="$1"; [[ -z "$domain" ]] && { echo "Usage: block_rm <domain>"; return 1; }
+  domain=$(echo "$domain" | sed 's|^https\?://||; s|/.*||; s|#.*||')
   chattr -i "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
   sed -i "/^$domain$/d" "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
   sed -i "/^www\.$domain$/d" "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
