@@ -10,17 +10,35 @@ log() { echo "[cerberus] $(date '+%H:%M:%S') $*"; }
 
 SAFESEARCH_MARKER="# Cerberus SafeSearch"
 
-apply_safesearch() {
+# Atomically replace /etc/hosts from a temp file, retrying chattr/mv to
+# survive races with the watchdog timer (both may write concurrently).
+swap_hosts() {
+  local src="$1"
+  for attempt in 1 2 3 4 5; do
+    chattr -i /etc/hosts 2>/dev/null || true
+    if mv "$src" /etc/hosts 2>/dev/null; then
+      chattr +i /etc/hosts 2>/dev/null || true
+      return 0
+    fi
+    chattr +i /etc/hosts 2>/dev/null || true
+    sleep 1
+  done
   chattr -i /etc/hosts 2>/dev/null || true
-  sed -i "/$SAFESEARCH_MARKER/,\$d" /etc/hosts 2>/dev/null || true
-  sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' /etc/hosts 2>/dev/null || true
+  cp "$src" /etc/hosts 2>/dev/null || true
+  chattr +i /etc/hosts 2>/dev/null || true
+  rm -f "$src"
+}
+
+apply_safesearch() {
+  local tmp; tmp=$(mktemp)
+  sed "/$SAFESEARCH_MARKER/,\$d" /etc/hosts 2>/dev/null | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' > "$tmp"
   {
     echo ""
     echo "$SAFESEARCH_MARKER"
     echo "# $(date '+%Y-%m-%d %H:%M')"
     for entry in "${SAFESEARCH_REDIRECTS[@]}"; do echo "$entry"; done
-  } >> /etc/hosts
-  chattr +i /etc/hosts 2>/dev/null || true
+  } >> "$tmp"
+  swap_hosts "$tmp"
   log "SafeSearch redirects applied (${#SAFESEARCH_REDIRECTS[@]} entries)"
 }
 
@@ -39,7 +57,6 @@ apply_hosts() {
   [[ -z "$custom_domains" ]] && grep -q "# Custom blocked domains" /etc/hosts 2>/dev/null && need_refresh=true
   if $need_refresh; then
     log "Refreshing hosts blocklist..."
-    chattr -i /etc/hosts 2>/dev/null || true
     local orig; orig=$(mktemp)
     sed "/$SAFESEARCH_MARKER/,\$d" /etc/hosts 2>/dev/null | sed "/$MARKER/,\$d" > "$orig" 2>/dev/null || true
     local dl_ok=false combined; combined=$(mktemp)
@@ -51,6 +68,7 @@ apply_hosts() {
       fi
       rm -f "$tmp"
     done
+    local new_hosts; new_hosts=$(mktemp)
     {
       cat "$orig"; echo ""; echo "$MARKER"
       echo "# $(date '+%Y-%m-%d %H:%M')"
@@ -64,13 +82,13 @@ apply_hosts() {
           [[ -z "$d" ]] && continue; echo "127.0.0.1 $d"; echo "127.0.0.1 www.$d"
         done
       fi
-    } > /etc/hosts
+    } > "$new_hosts"
     rm -f "$orig" "$combined"
     for d in "${WHITELIST_DOMAINS[@]}"; do
-      sed -i "/127\.0\.0\.1 $d\b/d" /etc/hosts 2>/dev/null || true
-      sed -i "/127\.0\.0\.1 www\.$d\b/d" /etc/hosts 2>/dev/null || true
+      sed -i "/127\.0\.0\.1 $d\b/d" "$new_hosts" 2>/dev/null || true
+      sed -i "/127\.0\.0\.1 www\.$d\b/d" "$new_hosts" 2>/dev/null || true
     done
-    chattr +i /etc/hosts 2>/dev/null || true
+    swap_hosts "$new_hosts"
     log "Hosts applied ($(grep -c '^127\.0\.0\.1' /etc/hosts) entries)"
   else
     chattr +i /etc/hosts 2>/dev/null || true

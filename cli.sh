@@ -161,16 +161,18 @@ case "${1:-help}" in
         domain=$(echo "$domain" | sed 's|^https\?://||; s|^www\.||')
         if grep -qF "$domain" "$CONFIG" 2>/dev/null; then
           echo "Domain already in whitelist."
+        elif grep -qxF "127.0.0.1 $domain" /etc/hosts 2>/dev/null || grep -qxF "127.0.0.1 www.$domain" /etc/hosts 2>/dev/null || grep -qxF "$domain" "$CUSTOM_BLOCK_FILE" 2>/dev/null; then
+          echo "BLOCKED: $domain is in the blocklist and cannot be whitelisted."
         else
           sed -i "/^WHITELIST_DOMAINS=(/a\\  \"$domain\"" "$CONFIG"
           echo "Added $domain to whitelist."
-          "$CORE" apply
+          "$CORE" refresh
         fi
         ;;
       rm)
         sed -i "/\"$domain\"/d" "$CONFIG"
         echo "Removed $domain from whitelist."
-        "$CORE" apply
+        "$CORE" refresh
         ;;
       *)
         echo "Usage: cerberus whitelist add|rm <domain>"
