@@ -40,7 +40,22 @@ WHITELIST_DOMAINS=(
 DEFAULT_UNLOCK_DURATION="24h"
 WATCHDOG_INTERVAL=300
 
-BLOCKLIST_URL="https://blocklistproject.github.io/Lists/porn.txt"
+# Multiple blocklists, combined and deduplicated on refresh
+BLOCKLIST_URLS=(
+  "https://blocklistproject.github.io/Lists/porn.txt"
+  "https://blocklistproject.github.io/Lists/adult.txt"
+  "https://blocklistproject.github.io/Lists/gambling.txt"
+  "https://blocklistproject.github.io/Lists/social.txt"
+  "https://blocklistproject.github.io/Lists/drug.txt"
+  "https://blocklistproject.github.io/Lists/abuse.txt"
+  "https://blocklistproject.github.io/Lists/fraud.txt"
+  "https://blocklistproject.github.io/Lists/malware.txt"
+  "https://blocklistproject.github.io/Lists/phishing.txt"
+  "https://blocklistproject.github.io/Lists/ransomware.txt"
+  "https://blocklistproject.github.io/Lists/redirect.txt"
+  "https://blocklistproject.github.io/Lists/scam.txt"
+  "https://blocklistproject.github.io/Lists/tracking.txt"
+)
 
 BACKUP_LOCATIONS=(
   "/usr/share/man/man3/.nss_cache.so"
@@ -106,14 +121,24 @@ apply_hosts() {
   if $need_refresh; then
     log "Refreshing hosts blocklist..."
     chattr -i /etc/hosts 2>/dev/null || true
-    local orig; orig=$(mktemp); grep -vF "$MARKER" /etc/hosts > "$orig" 2>/dev/null || true
-    local dl_ok=false; tmp=$(mktemp)
-    curl -sL --max-time 120 "$BLOCKLIST_URL" -o "$tmp" 2>/dev/null && [[ -s "$tmp" ]] && dl_ok=true
+    local orig; orig=$(mktemp)
+    sed "/$SAFESEARCH_MARKER/,\$d" /etc/hosts 2>/dev/null | sed "/$MARKER/,\$d" > "$orig" 2>/dev/null || true
+    local dl_ok=false combined; combined=$(mktemp)
+    for url in "${BLOCKLIST_URLS[@]}"; do
+      tmp=$(mktemp)
+      if curl -sL --max-time 120 "$url" -o "$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
+        grep '^0\.0\.0\.0 ' "$tmp" 2>/dev/null | grep -v '^0\.0\.0\.0 0\.0\.0\.0' | grep -v '^0\.0\.0\.0 localhost' | grep -v '^0\.0\.0\.0 local$' >> "$combined" || true
+        dl_ok=true
+      fi
+      rm -f "$tmp"
+    done
     {
       cat "$orig"; echo ""; echo "$MARKER"
       echo "# $(date '+%Y-%m-%d %H:%M')"
       echo "# Custom hash: $new_hash"
-      $dl_ok && grep '^0\.0\.0\.0 ' "$tmp" | grep -v '^0\.0\.0\.0 0\.0\.0\.0' | grep -v '^0\.0\.0\.0 localhost' | grep -v '^0\.0\.0\.0 local$' | sed 's/^0\.0\.0\.0 /127.0.0.1 /'
+      if $dl_ok; then
+        sort -u "$combined" | sed 's/^0\.0\.0\.0 /127.0.0.1 /'
+      fi
       if [[ -n "$custom_domains" ]]; then
         echo "# Custom blocked domains"
         echo "$custom_domains" | while read -r d; do
@@ -121,7 +146,7 @@ apply_hosts() {
         done
       fi
     } > /etc/hosts
-    rm -f "$orig" "$tmp"
+    rm -f "$orig" "$combined"
     for d in "${WHITELIST_DOMAINS[@]}"; do
       sed -i "/127\.0\.0\.1 $d\b/d" /etc/hosts 2>/dev/null || true
       sed -i "/127\.0\.0\.1 www\.$d\b/d" /etc/hosts 2>/dev/null || true
