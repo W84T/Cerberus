@@ -145,51 +145,26 @@ do_lock() {
 }
 
 do_update() {
-  local repo="${GIT_REPO_PATH:-/home/w84t/blocker-git}"
-  if [[ ! -d "$repo/.git" ]]; then
-    log "Git repo not found at $repo"
-    return 1
-  fi
-  rm -f "$repo/.git/FETCH_HEAD" 2>/dev/null || true
-  local user="${SUDO_USER:-$(logname 2>/dev/null || echo root)}"
+  local git_url="${GIT_REPO_URL:-https://github.com/W84T/Cerberus.git}"
+  local tmpdir
+  tmpdir=$(mktemp -d)
 
-  log "Checking for updates..."
-  if [[ "$user" != "root" ]]; then
-    sudo -u "$user" git -C "$repo" fetch 2>/dev/null || { log "git fetch failed"; return 1; }
-  else
-    git -C "$repo" fetch 2>/dev/null || { log "git fetch failed"; return 1; }
-  fi
-
-  local commits
-  if [[ "$user" != "root" ]]; then
-    commits=$(sudo -u "$user" git -C "$repo" rev-list HEAD..origin/master --count 2>/dev/null || echo 0)
-  else
-    commits=$(git -C "$repo" rev-list HEAD..origin/master --count 2>/dev/null || echo 0)
-  fi
-
-  if [[ "$commits" -eq 0 ]]; then
-    log "No updates available"
-    return 2
-  fi
-
-  log "$commits new commit(s) available, updating..."
-  if [[ "$user" != "root" ]]; then
-    sudo -u "$user" git -C "$repo" pull 2>/dev/null || { log "git pull failed"; return 1; }
-  else
-    git -C "$repo" pull 2>/dev/null || { log "git pull failed"; return 1; }
-  fi
+  log "Fetching latest from $git_url..."
+  git clone --depth 1 "$git_url" "$tmpdir" 2>/dev/null || { log "git clone failed"; rm -rf "$tmpdir"; return 1; }
 
   log "Updating installed files..."
   for f in "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/config" "$BINDIR/custom-block.txt" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py"; do
     chattr -i "$f" 2>/dev/null || true
   done
-  cp "$repo/core.sh" "$BINDIR/core.sh"
-  cp "$repo/cli.sh" "$BINDIR/cli.sh"
-  cp "$repo/config" "$BINDIR/config"
-  cp "$repo/resolver.py" "$BINDIR/resolver.py"
-  cp "$repo/blocklist_updater.py" "$BINDIR/blocklist_updater.py"
-  [[ -f "$repo/custom-block.txt" ]] && cp "$repo/custom-block.txt" "$BINDIR/custom-block.txt" || true
+  cp "$tmpdir/core.sh" "$BINDIR/core.sh"
+  cp "$tmpdir/cli.sh" "$BINDIR/cli.sh"
+  cp "$tmpdir/config" "$BINDIR/config"
+  cp "$tmpdir/resolver.py" "$BINDIR/resolver.py"
+  cp "$tmpdir/blocklist_updater.py" "$BINDIR/blocklist_updater.py"
+  [[ -f "$tmpdir/custom-block.txt" ]] && cp "$tmpdir/custom-block.txt" "$BINDIR/custom-block.txt" || true
   chmod +x "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py"
+  rm -rf "$tmpdir"
+
   log "Re-applying rules..."
   source "$BINDIR/config"
   apply_iptables

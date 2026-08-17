@@ -40,7 +40,7 @@ SAFESEARCH_REDIRECTS=(
 )
 
 CUSTOM_BLOCK_FILE="/opt/cerberus/custom-block.txt"
-GIT_REPO_PATH="/home/w84t/blocker-git"
+GIT_REPO_URL="https://github.com/W84T/Cerberus.git"
 
 # SQLite database for blocking
 DB_PATH="/opt/cerberus/cerberus.db"
