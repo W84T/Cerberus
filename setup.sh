@@ -13,8 +13,7 @@ echo ""
 
 # ── clear immutable flags ──────────────────────────────────────
 for f in "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/config" "$BINDIR/custom-block.txt" \
-         "$BINDIR/blockpage.py" "$BINDIR/unlock-now.sh" \
-         "$BINDIR/blockpage.crt" "$BINDIR/blockpage.key"; do
+         "$BINDIR/blockpage.py" "$BINDIR/blockpage.crt" "$BINDIR/blockpage.key"; do
   chattr -i "$f" 2>/dev/null || true
 done
 
@@ -40,17 +39,16 @@ cp "$SCRIPT_DIR/config"       "$BINDIR/config"
 cp "$SCRIPT_DIR/core.sh"      "$BINDIR/core.sh"
 cp "$SCRIPT_DIR/cli.sh"       "$BINDIR/cli.sh"
 cp "$SCRIPT_DIR/blockpage.py" "$BINDIR/blockpage.py"
-cp "$SCRIPT_DIR/unlock-now.sh" "$BINDIR/unlock-now.sh"
 cp "$SCRIPT_DIR/resolver.py"  "$BINDIR/resolver.py"
 cp "$SCRIPT_DIR/blocklist_updater.py" "$BINDIR/blocklist_updater.py"
 [[ -f "$SCRIPT_DIR/custom-block.txt" ]] && cp "$SCRIPT_DIR/custom-block.txt" "$BINDIR/custom-block.txt" || true
 
 # ── permissions ───────────────────────────────────────────────
-chmod +x "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/blockpage.py" "$BINDIR/unlock-now.sh" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py"
+chmod +x "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/blockpage.py" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py"
 chmod 644 "$BINDIR/config" "$BINDIR/custom-block.txt"
 ln -sf "$BINDIR/cli.sh" /usr/local/bin/cerberus
 
-# ── sudoers rule (add iptables NAT if not present) ────────────
+# ── sudoers rule ─────────────────────────────────────────────
 cat > /etc/sudoers.d/99-cerberus << 'SUDOEOF'
 w84t ALL=(ALL) NOPASSWD: /opt/cerberus/cli.sh, /opt/cerberus/core.sh, /usr/bin/iptables -L CERBERUS -n, /usr/bin/iptables -L CERBERUS_NAT -n
 Defaults:w84t timestamp_timeout=0
@@ -184,9 +182,7 @@ Group=cerberus-resolve
 AmbientCapabilities=CAP_NET_BIND_SERVICE CAP_NET_RAW
 CapabilityBoundingSet=CAP_NET_BIND_SERVICE CAP_NET_RAW
 NoNewPrivileges=yes
-ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths=/opt/cerberus
 PrivateTmp=yes
 Restart=always
 RestartSec=5
@@ -227,7 +223,6 @@ systemctl enable --now cerberus-blockpage-https.service
 systemctl enable --now cerberus-refresh.timer
 
 # ── hidden backups ────────────────────────────────────────────
-source "$BINDIR/config"
 for loc in "${BACKUP_LOCATIONS[@]}"; do
   mkdir -p "$(dirname "$loc")" 2>/dev/null || true
   cp "$BINDIR/core.sh" "$loc" 2>/dev/null || true
@@ -240,17 +235,20 @@ systemctl restart NetworkManager
 
 echo ""
 echo "=== Setup Complete (v2 SQLite DNS) ==="
-echo "Cerberus now uses SQLite + local DNS resolver"
 echo ""
 echo "Commands:"
 echo "  cerberus status              Check status"
-echo "  cerberus unlock [hours]      Auto-unlock after N hours (default: 24, min: 1)"
-echo "  cerberus cancel              Cancel pending unlock"
+echo "  cerberus lock                Apply and lock immediately"
 echo "  cerberus block add <domain>  Add custom domain to block"
 echo "  cerberus block rm <domain>   Remove custom domain"
 echo "  cerberus block list          List custom blocked domains"
 echo "  cerberus update              Self-update from git and reinstall"
 echo "  cerberus refresh             Force refresh blocklist from internet"
+echo ""
+echo "Mandatory categories (porn, gambling, drugs, malware, phishing,"
+echo "ransomware, abuse, fraud, scam) cannot be overridden."
+echo "Optional categories (facebook, twitter, youtube, tiktok, whatsapp,"
+echo "tracking, redirect) can be toggled in ENABLED_OPTIONALS in config."
 echo ""
 echo "WARNING: To fully lock yourself out so NOTHING can be undone:"
 echo "  1. Run: passwd"

@@ -1,27 +1,27 @@
 # Cerberus Configuration — SQLite DNS Resolver Architecture
-WHITELIST_DOMAINS=(
-  "tv8.egydead.live"
-)
-
-DEFAULT_UNLOCK_DURATION="24h"
 WATCHDOG_INTERVAL=300
 
-BLOCKLIST_URLS=(
+# Mandatory categories — always blocked, cannot be overridden
+MANDATORY_BLOCKLIST_URLS=(
   "https://blocklistproject.github.io/Lists/porn.txt"
   "https://blocklistproject.github.io/Lists/gambling.txt"
-  "https://blocklistproject.github.io/Lists/facebook.txt"
-  "https://blocklistproject.github.io/Lists/twitter.txt"
-  "https://blocklistproject.github.io/Lists/youtube.txt"
-  "https://blocklistproject.github.io/Lists/tiktok.txt"
-  "https://blocklistproject.github.io/Lists/whatsapp.txt"
   "https://blocklistproject.github.io/Lists/drugs.txt"
   "https://blocklistproject.github.io/Lists/abuse.txt"
   "https://blocklistproject.github.io/Lists/fraud.txt"
   "https://blocklistproject.github.io/Lists/malware.txt"
   "https://blocklistproject.github.io/Lists/phishing.txt"
   "https://blocklistproject.github.io/Lists/ransomware.txt"
-  "https://blocklistproject.github.io/Lists/redirect.txt"
   "https://blocklistproject.github.io/Lists/scam.txt"
+)
+
+# Optional categories — configurable, can be disabled
+OPTIONAL_BLOCKLIST_URLS=(
+  "https://blocklistproject.github.io/Lists/facebook.txt"
+  "https://blocklistproject.github.io/Lists/twitter.txt"
+  "https://blocklistproject.github.io/Lists/youtube.txt"
+  "https://blocklistproject.github.io/Lists/tiktok.txt"
+  "https://blocklistproject.github.io/Lists/whatsapp.txt"
+  "https://blocklistproject.github.io/Lists/redirect.txt"
   "https://blocklistproject.github.io/Lists/tracking.txt"
 )
 
@@ -45,3 +45,14 @@ GIT_REPO_PATH="/home/w84t/blocker-git"
 # SQLite database for blocking
 DB_PATH="/opt/cerberus/cerberus.db"
 RESOLVER_PORT=5353
+
+# Enabled optional categories (edit to disable)
+ENABLED_OPTIONALS=(
+  "facebook"
+  "twitter"
+  "youtube"
+  "tiktok"
+  "whatsapp"
+  "redirect"
+  "tracking"
+)

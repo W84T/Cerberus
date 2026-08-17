@@ -2,7 +2,6 @@
 set -euo pipefail
 source /opt/cerberus/config
 SCRIPT_HASH=$(sha256sum "$0" 2>/dev/null | cut -d' ' -f1)
-UNLOCK_FILE="/opt/cerberus/.unlock"
 CUSTOM_BLOCK_FILE="${CUSTOM_BLOCK_FILE:-/opt/cerberus/custom-block.txt}"
 BINDIR="/opt/cerberus"
 DB_PATH="${DB_PATH:-/opt/cerberus/cerberus.db}"
@@ -87,7 +86,7 @@ verify_blocking() {
     update_db true
     ((failed++)) || true
   fi
-  iptables -L CERBERUS -n 2>/dev/null | grep -q 'dpt:53' || { log "iptables rules missing, re-applying"; apply_iptables; ((failed++)) || true; }
+  iptables -L CERBERUS -n 2>/dev/null | grep -q 'dpt:853' || { log "iptables rules missing, re-applying"; apply_iptables; ((failed++)) || true; }
   iptables -t nat -L CERBERUS_NAT -n 2>/dev/null | grep -q "REDIRECT" || { log "NAT rules missing, re-applying"; apply_iptables; ((failed++)) || true; }
   ensure_resolver || true
   return $failed
@@ -136,14 +135,6 @@ save_state() {
   iptables -L CERBERUS -n 2>/dev/null | grep -q 'dpt:853' && echo "iptables=active" >> "$state_file" || echo "iptables=inactive" >> "$state_file"
   systemctl is-active --quiet cerberus-resolver.service 2>/dev/null && echo "resolver=active" >> "$state_file" || echo "resolver=inactive" >> "$state_file"
   chmod 644 "$state_file" 2>/dev/null || true
-}
-
-check_unlock() {
-  if [[ -f "$UNLOCK_FILE" ]]; then
-    local expiry; expiry=$(cat "$UNLOCK_FILE" 2>/dev/null || echo "0")
-    local now; now=$(date +%s)
-    (( now >= expiry )) && { log "Unlock timer expired, running unlock"; /opt/cerberus/unlock-now.sh; }
-  fi
 }
 
 do_lock() {
@@ -237,7 +228,7 @@ block_rm() {
 
 case "${1:-apply}" in
   apply)     update_db; apply_iptables; ensure_resolver; self_heal ;;
-  check)     verify_blocking; self_heal; check_unlock ;;
+  check)     verify_blocking; self_heal ;;
   lock)      do_lock ;;
   block_add) block_add "${2:-}" ;;
   block_rm)  block_rm "${2:-}" ;;
