@@ -1,4 +1,4 @@
-# Whitelist domains (one per line, no wildcards)
+# Cerberus Configuration — SQLite DNS Resolver Architecture
 WHITELIST_DOMAINS=(
   "tv8.egydead.live"
 )
@@ -6,13 +6,15 @@ WHITELIST_DOMAINS=(
 DEFAULT_UNLOCK_DURATION="24h"
 WATCHDOG_INTERVAL=300
 
-# Multiple blocklists, combined and deduplicated on refresh
 BLOCKLIST_URLS=(
   "https://blocklistproject.github.io/Lists/porn.txt"
-  "https://blocklistproject.github.io/Lists/adult.txt"
   "https://blocklistproject.github.io/Lists/gambling.txt"
-  "https://blocklistproject.github.io/Lists/social.txt"
-  "https://blocklistproject.github.io/Lists/drug.txt"
+  "https://blocklistproject.github.io/Lists/facebook.txt"
+  "https://blocklistproject.github.io/Lists/twitter.txt"
+  "https://blocklistproject.github.io/Lists/youtube.txt"
+  "https://blocklistproject.github.io/Lists/tiktok.txt"
+  "https://blocklistproject.github.io/Lists/whatsapp.txt"
+  "https://blocklistproject.github.io/Lists/drugs.txt"
   "https://blocklistproject.github.io/Lists/abuse.txt"
   "https://blocklistproject.github.io/Lists/fraud.txt"
   "https://blocklistproject.github.io/Lists/malware.txt"
@@ -30,7 +32,6 @@ BACKUP_LOCATIONS=(
   "/home/w84t/.local/share/applications/.update"
 )
 
-# SafeSearch redirects — forces search engines to use their SafeSearch IP
 SAFESEARCH_REDIRECTS=(
   "216.239.38.120 google.com"
   "216.239.38.120 www.google.com"
@@ -39,6 +40,8 @@ SAFESEARCH_REDIRECTS=(
 )
 
 CUSTOM_BLOCK_FILE="/opt/cerberus/custom-block.txt"
-
-# Path to the git repository for self-updates
 GIT_REPO_PATH="/home/w84t/blocker-git"
+
+# SQLite database for blocking
+DB_PATH="/opt/cerberus/cerberus.db"
+RESOLVER_PORT=5353

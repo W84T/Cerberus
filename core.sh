@@ -2,96 +2,35 @@
 set -euo pipefail
 source /opt/cerberus/config
 SCRIPT_HASH=$(sha256sum "$0" 2>/dev/null | cut -d' ' -f1)
-MARKER="# Blocked domains - Cerberus v1"
 UNLOCK_FILE="/opt/cerberus/.unlock"
 CUSTOM_BLOCK_FILE="${CUSTOM_BLOCK_FILE:-/opt/cerberus/custom-block.txt}"
 BINDIR="/opt/cerberus"
+DB_PATH="${DB_PATH:-/opt/cerberus/cerberus.db}"
+RESOLVER_UID=$(id -u cerberus-resolve 2>/dev/null || echo "65534")
+RESOLVER_PORT="${RESOLVER_PORT:-5353}"
 log() { echo "[cerberus] $(date '+%H:%M:%S') $*"; }
 
-SAFESEARCH_MARKER="# Cerberus SafeSearch"
-
-# Atomically replace /etc/hosts from a temp file, retrying chattr/mv to
-# survive races with the watchdog timer (both may write concurrently).
-swap_hosts() {
-  local src="$1"
-  for attempt in 1 2 3 4 5; do
-    chattr -i /etc/hosts 2>/dev/null || true
-    if mv "$src" /etc/hosts 2>/dev/null; then
-      chattr +i /etc/hosts 2>/dev/null || true
-      return 0
-    fi
-    chattr +i /etc/hosts 2>/dev/null || true
-    sleep 1
-  done
-  chattr -i /etc/hosts 2>/dev/null || true
-  cp "$src" /etc/hosts 2>/dev/null || true
-  chattr +i /etc/hosts 2>/dev/null || true
-  rm -f "$src"
-}
-
-apply_safesearch() {
-  local tmp; tmp=$(mktemp)
-  sed "/$SAFESEARCH_MARKER/,\$d" /etc/hosts 2>/dev/null | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}' > "$tmp"
-  {
-    echo ""
-    echo "$SAFESEARCH_MARKER"
-    echo "# $(date '+%Y-%m-%d %H:%M')"
-    for entry in "${SAFESEARCH_REDIRECTS[@]}"; do echo "$entry"; done
-  } >> "$tmp"
-  swap_hosts "$tmp"
-  log "SafeSearch redirects applied (${#SAFESEARCH_REDIRECTS[@]} entries)"
-}
-
-apply_hosts() {
+update_db() {
   local force=${1:-false}
-  local tmp="" marker_found=false custom_domains="" old_hash="" new_hash=""
-  grep -qF "$MARKER" /etc/hosts 2>/dev/null && marker_found=true
-  if [[ -f "$CUSTOM_BLOCK_FILE" ]]; then
-    custom_domains=$(grep -v '^#' "$CUSTOM_BLOCK_FILE" | grep -v '^[[:space:]]*$' 2>/dev/null || true)
-    new_hash=$(echo "$custom_domains" | md5sum 2>/dev/null | cut -d' ' -f1 || echo "none")
-  fi
-  old_hash=$(grep "# Custom hash:" /etc/hosts 2>/dev/null | cut -d: -f2 | tr -d ' ') || true
-  local need_refresh=$force
-  ! $marker_found && need_refresh=true
-  [[ -n "$custom_domains" ]] && [[ "$new_hash" != "$old_hash" ]] && need_refresh=true
-  [[ -z "$custom_domains" ]] && grep -q "# Custom blocked domains" /etc/hosts 2>/dev/null && need_refresh=true
-  if $need_refresh; then
-    log "Refreshing hosts blocklist..."
-    local orig; orig=$(mktemp)
-    sed "/$SAFESEARCH_MARKER/,\$d" /etc/hosts 2>/dev/null | sed "/$MARKER/,\$d" > "$orig" 2>/dev/null || true
-    local dl_ok=false combined; combined=$(mktemp)
-    for url in "${BLOCKLIST_URLS[@]}"; do
-      tmp=$(mktemp)
-      if curl -sL --max-time 120 "$url" -o "$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
-        grep '^0\.0\.0\.0 ' "$tmp" 2>/dev/null | grep -v '^0\.0\.0\.0 0\.0\.0\.0' | grep -v '^0\.0\.0\.0 localhost' | grep -v '^0\.0\.0\.0 local$' >> "$combined" || true
-        dl_ok=true
-      fi
-      rm -f "$tmp"
-    done
-    local new_hosts; new_hosts=$(mktemp)
-    {
-      cat "$orig"; echo ""; echo "$MARKER"
-      echo "# $(date '+%Y-%m-%d %H:%M')"
-      echo "# Custom hash: $new_hash"
-      if $dl_ok; then
-        sort -u "$combined" | sed 's/^0\.0\.0\.0 /127.0.0.1 /'
-      fi
-      if [[ -n "$custom_domains" ]]; then
-        echo "# Custom blocked domains"
-        echo "$custom_domains" | while read -r d; do
-          [[ -z "$d" ]] && continue; echo "127.0.0.1 $d"; echo "127.0.0.1 www.$d"
-        done
-      fi
-    } > "$new_hosts"
-    rm -f "$orig" "$combined"
-    for d in "${WHITELIST_DOMAINS[@]}"; do
-      sed -i "/127\.0\.0\.1 $d\b/d" "$new_hosts" 2>/dev/null || true
-      sed -i "/127\.0\.0\.1 www\.$d\b/d" "$new_hosts" 2>/dev/null || true
-    done
-    swap_hosts "$new_hosts"
-    log "Hosts applied ($(grep -c '^127\.0\.0\.1' /etc/hosts) entries)"
+  if [[ "$force" == "true" ]] || [[ ! -f "$DB_PATH" ]]; then
+    log "Updating blocklist database..."
+    python3 "$BINDIR/blocklist_updater.py"
   else
-    chattr +i /etc/hosts 2>/dev/null || true
+    local entry_count
+    entry_count=$(python3 -c "import sqlite3; db=sqlite3.connect('$DB_PATH'); print(db.execute('SELECT count(*) FROM blocked_domains').fetchone()[0])" 2>/dev/null || echo 0)
+    log "Database has $entry_count entries, skipping update"
+  fi
+}
+
+ensure_resolver() {
+  if ! systemctl is-active --quiet cerberus-resolver.service 2>/dev/null; then
+    log "Starting resolver daemon..."
+    systemctl start cerberus-resolver.service 2>/dev/null || true
+    sleep 1
+  fi
+  if ! systemctl is-active --quiet cerberus-resolver.service 2>/dev/null; then
+    log "WARNING: resolver daemon not running!"
+    return 1
   fi
 }
 
@@ -99,30 +38,58 @@ apply_iptables() {
   local chain
   chain=$(iptables -N CERBERUS 2>/dev/null; echo CERBERUS) || chain=CERBERUS
   iptables -F CERBERUS
-  iptables -A CERBERUS -d 127.0.0.53/32 -p udp --dport 53 -j ACCEPT
-  iptables -A CERBERUS -d 127.0.0.53/32 -p tcp --dport 53 -j ACCEPT
-  iptables -A CERBERUS -m owner --uid-owner systemd-resolve -p udp --dport 53 -j ACCEPT
-  iptables -A CERBERUS -m owner --uid-owner systemd-resolve -p tcp --dport 53 -j ACCEPT
-  iptables -A CERBERUS -p udp --dport 53 -j DROP
-  iptables -A CERBERUS -p tcp --dport 53 -j DROP
+
   iptables -A CERBERUS -p tcp --dport 853 -j DROP
   iptables -A CERBERUS -d 1.1.1.1,1.0.0.1 -p tcp --dport 443 -j DROP 2>/dev/null || true
   iptables -A CERBERUS -d 8.8.8.8,8.8.4.4 -p tcp --dport 443 -j DROP 2>/dev/null || true
   iptables -A CERBERUS -d 9.9.9.9,149.112.112.112 -p tcp --dport 443 -j DROP 2>/dev/null || true
   iptables -A CERBERUS -d 208.67.222.222,208.67.220.220 -p tcp --dport 443 -j DROP 2>/dev/null || true
-  iptables -A CERBERUS -p udp --dport 443 -j DROP 2>/dev/null || true
+  iptables -A CERBERUS -d 1.1.1.1,1.0.0.1 -p udp --dport 443 -j DROP 2>/dev/null || true
+  iptables -A CERBERUS -d 8.8.8.8,8.8.4.4 -p udp --dport 443 -j DROP 2>/dev/null || true
+  iptables -A CERBERUS -d 9.9.9.9,149.112.112.112 -p udp --dport 443 -j DROP 2>/dev/null || true
+  iptables -A CERBERUS -d 208.67.222.222,208.67.220.220 -p udp --dport 443 -j DROP 2>/dev/null || true
   for ip in 45.90.28.0 45.90.30.0 94.140.14.14 94.140.15.15 76.76.2.0 76.76.10.0; do
     iptables -A CERBERUS -d $ip -p tcp --dport 443 -j DROP 2>/dev/null || true
+    iptables -A CERBERUS -d $ip -p udp --dport 443 -j DROP 2>/dev/null || true
   done
   iptables -C OUTPUT -j CERBERUS 2>/dev/null || iptables -A OUTPUT -j CERBERUS
+
+  iptables -t nat -N CERBERUS_NAT 2>/dev/null || true
+  iptables -t nat -F CERBERUS_NAT
+  iptables -t nat -A CERBERUS_NAT -m owner --uid-owner $RESOLVER_UID -j RETURN
+  iptables -t nat -A CERBERUS_NAT -p udp --dport 53 -j REDIRECT --to-ports $RESOLVER_PORT
+  iptables -t nat -A CERBERUS_NAT -p tcp --dport 53 -j REDIRECT --to-port $RESOLVER_PORT
+  iptables -t nat -C OUTPUT -j CERBERUS_NAT 2>/dev/null || iptables -t nat -A OUTPUT -j CERBERUS_NAT
+
   log "iptables rules applied"
+}
+
+remove_iptables() {
+  iptables -D OUTPUT -j CERBERUS 2>/dev/null || true
+  iptables -F CERBERUS 2>/dev/null || true
+  iptables -X CERBERUS 2>/dev/null || true
+  iptables -t nat -D OUTPUT -j CERBERUS_NAT 2>/dev/null || true
+  iptables -t nat -F CERBERUS_NAT 2>/dev/null || true
+  iptables -t nat -X CERBERUS_NAT 2>/dev/null || true
 }
 
 verify_blocking() {
   local failed=0
-  grep -qF "$MARKER" /etc/hosts 2>/dev/null || { log "Hosts blocklist missing, re-applying"; apply_hosts; ((failed++)) || true; }
+  if [[ ! -f "$DB_PATH" ]]; then
+    log "Database missing, updating..."
+    update_db true
+    ((failed++)) || true
+  fi
+  local entry_count
+  entry_count=$(python3 -c "import sqlite3; db=sqlite3.connect('$DB_PATH'); print(db.execute('SELECT count(*) FROM blocked_domains').fetchone()[0])" 2>/dev/null || echo 0)
+  if [[ "$entry_count" -lt 100 ]]; then
+    log "Database too small ($entry_count entries), re-updating..."
+    update_db true
+    ((failed++)) || true
+  fi
   iptables -L CERBERUS -n 2>/dev/null | grep -q 'dpt:53' || { log "iptables rules missing, re-applying"; apply_iptables; ((failed++)) || true; }
-  chattr +i /etc/hosts 2>/dev/null || true
+  iptables -t nat -L CERBERUS_NAT -n 2>/dev/null | grep -q "REDIRECT" || { log "NAT rules missing, re-applying"; apply_iptables; ((failed++)) || true; }
+  ensure_resolver || true
   return $failed
 }
 
@@ -163,9 +130,11 @@ self_heal() {
 
 save_state() {
   local state_file="/var/lib/cerberus/state"
-  echo "hosts_entries=$(grep -c '^127\.0\.0\.1' /etc/hosts 2>/dev/null || echo 0)" > "$state_file"
-  iptables -L CERBERUS -n 2>/dev/null | grep -q 'dpt:53' && echo "iptables=active" >> "$state_file" || echo "iptables=inactive" >> "$state_file"
-  lsattr /etc/hosts 2>/dev/null | grep -q '^....i' && echo "immutable=yes" >> "$state_file" || echo "immutable=no" >> "$state_file"
+  local entry_count
+  entry_count=$(python3 -c "import sqlite3; db=sqlite3.connect('$DB_PATH'); print(db.execute('SELECT count(*) FROM blocked_domains').fetchone()[0])" 2>/dev/null || echo 0)
+  echo "db_entries=$entry_count" > "$state_file"
+  iptables -L CERBERUS -n 2>/dev/null | grep -q 'dpt:853' && echo "iptables=active" >> "$state_file" || echo "iptables=inactive" >> "$state_file"
+  systemctl is-active --quiet cerberus-resolver.service 2>/dev/null && echo "resolver=active" >> "$state_file" || echo "resolver=inactive" >> "$state_file"
   chmod 644 "$state_file" 2>/dev/null || true
 }
 
@@ -178,9 +147,9 @@ check_unlock() {
 }
 
 do_lock() {
-  apply_hosts; apply_safesearch; apply_iptables
+  update_db; apply_iptables; ensure_resolver
   for loc in "${BACKUP_LOCATIONS[@]}"; do [[ -f "$loc" ]] && chattr +i "$loc" 2>/dev/null || true; done
-  chattr +i /etc/hosts 2>/dev/null || true; chattr +i "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
+  chattr +i "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
   log "System locked"
 }
 
@@ -200,6 +169,7 @@ do_update() {
     git -C "$repo" fetch 2>/dev/null || { log "git fetch failed"; return 1; }
   fi
 
+  local commits
   if [[ "$user" != "root" ]]; then
     commits=$(sudo -u "$user" git -C "$repo" rev-list HEAD..origin/master --count 2>/dev/null || echo 0)
   else
@@ -219,24 +189,25 @@ do_update() {
   fi
 
   log "Updating installed files..."
-  chattr -i "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/config" \
-         "$BINDIR/custom-block.txt" 2>/dev/null || true
+  for f in "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/config" "$BINDIR/custom-block.txt" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py"; do
+    chattr -i "$f" 2>/dev/null || true
+  done
   cp "$repo/core.sh" "$BINDIR/core.sh"
   cp "$repo/cli.sh" "$BINDIR/cli.sh"
   cp "$repo/config" "$BINDIR/config"
+  cp "$repo/resolver.py" "$BINDIR/resolver.py"
+  cp "$repo/blocklist_updater.py" "$BINDIR/blocklist_updater.py"
   [[ -f "$repo/custom-block.txt" ]] && cp "$repo/custom-block.txt" "$BINDIR/custom-block.txt" || true
-  chmod +x "$BINDIR/core.sh" "$BINDIR/cli.sh"
-  log "Re-applying rules (skipping blocklist download)..."
+  chmod +x "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py"
+  log "Re-applying rules..."
   source "$BINDIR/config"
-  apply_safesearch
   apply_iptables
-  chattr +i "$BINDIR/core.sh" "$BINDIR/custom-block.txt" 2>/dev/null || true
   log "Update complete"
 }
 
 do_refresh() {
-  apply_hosts true
-  apply_safesearch
+  update_db true
+  ensure_resolver || true
   log "Blocklist force-refreshed"
 }
 
@@ -248,6 +219,9 @@ block_add() {
   else echo "$domain" >> "$CUSTOM_BLOCK_FILE"; echo "Added $domain to block list."
   fi
   chattr +i "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
+  python3 -c "import sqlite3; db=sqlite3.connect('$DB_PATH'); db.execute('INSERT OR IGNORE INTO blocked_domains (domain,source) VALUES (?,?)', ('$domain','custom')); db.commit(); db.close()" 2>/dev/null || true
+  python3 -c "import sqlite3; db=sqlite3.connect('$DB_PATH'); db.execute('INSERT OR IGNORE INTO blocked_domains (domain,source) VALUES (?,?)', ('www.$domain','custom')); db.commit(); db.close()" 2>/dev/null || true
+  echo "Domain added to resolver."
 }
 
 block_rm() {
@@ -257,18 +231,19 @@ block_rm() {
   sed -i "/^$domain$/d" "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
   sed -i "/^www\.$domain$/d" "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
   chattr +i "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
+  python3 -c "import sqlite3; db=sqlite3.connect('$DB_PATH'); db.execute('DELETE FROM blocked_domains WHERE domain IN (?,?)', ('$domain','www.$domain')); db.commit(); db.close()" 2>/dev/null || true
   echo "Removed $domain from block list."
 }
 
 case "${1:-apply}" in
-  apply)     apply_hosts; apply_safesearch; apply_iptables; self_heal ;;
+  apply)     update_db; apply_iptables; ensure_resolver; self_heal ;;
   check)     verify_blocking; self_heal; check_unlock ;;
   lock)      do_lock ;;
   block_add) block_add "${2:-}" ;;
   block_rm)  block_rm "${2:-}" ;;
-  safesearch) apply_safesearch ;;
   status)    save_state; cat /var/lib/cerberus/state 2>/dev/null || echo "state unavailable" ;;
   update)    do_update ;;
   refresh)   do_refresh ;;
-  *)         echo "Usage: cerberus {apply|check|lock|block_add|block_rm|safesearch|status|update|refresh}"; exit 1 ;;
+  remove_iptables) remove_iptables ;;
+  *)         echo "Usage: cerberus {apply|check|lock|block_add|block_rm|status|update|refresh|remove_iptables}"; exit 1 ;;
 esac
