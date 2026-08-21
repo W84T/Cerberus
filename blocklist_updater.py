@@ -46,6 +46,27 @@ def load_list_section(config_path, section_name):
         log.error(f"config not found: {config_path}")
     return urls
 
+def load_always_allow(config_path):
+    entries = []
+    in_section = False
+    try:
+        with open(config_path) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("ALWAYS_ALLOW=("):
+                    in_section = True
+                    continue
+                if in_section:
+                    if line.startswith(")"):
+                        break
+                    entry = line.strip('"').strip()
+                    if entry and not entry.startswith("#"):
+                        entries.append(entry.lower())
+    except FileNotFoundError:
+        pass
+    return set(entries)
+
+
 def load_enabled_optionals(config_path):
     names = []
     in_section = False
@@ -117,11 +138,13 @@ def update_blocklist(db_path, config_path, custom_path):
     mandatory_urls = load_list_section(config_path, "MANDATORY_BLOCKLIST_URLS")
     optional_urls = load_list_section(config_path, "OPTIONAL_BLOCKLIST_URLS")
     enabled_optionals = load_enabled_optionals(config_path)
+    always_allow = load_always_allow(config_path)
     custom_domains = load_custom_blocklist(custom_path)
 
     log.info(f"mandatory blocklists: {len(mandatory_urls)}")
     log.info(f"optional blocklists: {len(optional_urls)} (enabled: {len(enabled_optionals)})")
     log.info(f"custom domains: {len(custom_domains)}")
+    log.info(f"always-allow entries: {len(always_allow)}")
 
     all_mandatory = set()
     all_optional = set()
@@ -145,7 +168,10 @@ def update_blocklist(db_path, config_path, custom_path):
         name = url_to_name(url)
         category = name
         is_enabled = category in enabled_optionals
-        status = "enabled" if is_enabled else "disabled"
+        if not is_enabled:
+            log.info(f"[optional:disabled] skipping {name}")
+            continue
+        status = "enabled"
         log.info(f"[optional:{status}] downloading {name}...")
         text = download_list(url)
         if text is None:
@@ -164,7 +190,16 @@ def update_blocklist(db_path, config_path, custom_path):
     for domain in custom_domains:
         all_domains.add(domain.lower().strip())
 
-    log.info(f"total unique domains: {len(all_domains)} (mandatory: {len(all_mandatory)}, optional: {len(all_optional)}, custom: {len(custom_domains)})")
+    def is_allowed(domain):
+        for allowed in always_allow:
+            if domain == allowed or domain.endswith("." + allowed):
+                return True
+        return False
+
+    exempted = {d for d in all_domains if is_allowed(d)}
+    all_domains -= exempted
+
+    log.info(f"total unique domains: {len(all_domains)} (mandatory: {len(all_mandatory)}, optional: {len(all_optional)}, custom: {len(custom_domains)}, exempted: {len(exempted)})")
 
     log.info("writing to database...")
     db.execute("DELETE FROM blocked_domains")
@@ -173,6 +208,8 @@ def update_blocklist(db_path, config_path, custom_path):
     db = sqlite3.connect(db_path)
     db.execute("PRAGMA synchronous=OFF")
     db.execute("PRAGMA journal_mode=OFF")
+    db.execute("DELETE FROM blocked_domains")
+    db.commit()
 
     count = 0
     batch = []
@@ -186,12 +223,12 @@ def update_blocklist(db_path, config_path, custom_path):
         batch.append((domain, "blocklist", category))
         count += 1
         if len(batch) >= 50000:
-            db.executemany("INSERT INTO blocked_domains (domain, source, category) VALUES (?, ?, ?)", batch)
+            db.executemany("INSERT OR REPLACE INTO blocked_domains (domain, source, category) VALUES (?, ?, ?)", batch)
             db.commit()
             batch = []
             log.info(f"  inserted {count}...")
     if batch:
-        db.executemany("INSERT INTO blocked_domains (domain, source, category) VALUES (?, ?, ?)", batch)
+        db.executemany("INSERT OR REPLACE INTO blocked_domains (domain, source, category) VALUES (?, ?, ?)", batch)
         db.commit()
 
     db.execute("PRAGMA synchronous=NORMAL")

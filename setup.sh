@@ -35,8 +35,8 @@ rm -f /usr/local/bin/cerberus
 
 # ── copy source files ─────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cp "$SCRIPT_DIR/config"       "$BINDIR/config"
-cp "$SCRIPT_DIR/core.sh"      "$BINDIR/core.sh"
+  cp "$SCRIPT_DIR/config"       "$BINDIR/config"
+  cp "$SCRIPT_DIR/core.sh"      "$BINDIR/core.sh"
 cp "$SCRIPT_DIR/cli.sh"       "$BINDIR/cli.sh"
 cp "$SCRIPT_DIR/blockpage.py" "$BINDIR/blockpage.py"
 cp "$SCRIPT_DIR/resolver.py"  "$BINDIR/resolver.py"

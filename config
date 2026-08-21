@@ -20,7 +20,6 @@ OPTIONAL_BLOCKLIST_URLS=(
   "https://blocklistproject.github.io/Lists/twitter.txt"
   "https://blocklistproject.github.io/Lists/youtube.txt"
   "https://blocklistproject.github.io/Lists/tiktok.txt"
-  "https://blocklistproject.github.io/Lists/whatsapp.txt"
   "https://blocklistproject.github.io/Lists/redirect.txt"
   "https://blocklistproject.github.io/Lists/tracking.txt"
 )
@@ -52,7 +51,14 @@ ENABLED_OPTIONALS=(
   "twitter"
   "youtube"
   "tiktok"
-  "whatsapp"
   "redirect"
   "tracking"
+)
+
+# Domains always allowed (exact match + all subdomains), even if present in blocklists
+ALWAYS_ALLOW=(
+  "whatsapp.com"
+  "whatsapp.net"
+  "whatsapp.org"
+  "wa.me"
 )
