@@ -199,13 +199,14 @@ def update_blocklist(db_path, config_path, custom_path):
     exempted = {d for d in all_domains if is_allowed(d)}
     all_domains -= exempted
 
-    log.info(f"total unique domains: {len(all_domains)} (mandatory: {len(all_mandatory)}, optional: {len(all_optional)}, custom: {len(custom_domains)}, exempted: {len(exempted)})")
+    mandatory_count = len(all_mandatory)
+    log.info(f"total unique domains: {len(all_domains)} (mandatory: {mandatory_count}, optional: {len(all_optional)}, custom: {len(custom_domains)}, exempted: {len(exempted)})")
+
+    if mandatory_count == 0:
+        log.error("all mandatory lists failed — aborting to protect existing database")
+        return
 
     log.info("writing to database...")
-    db.execute("DELETE FROM blocked_domains")
-    db.close()
-
-    db = sqlite3.connect(db_path)
     db.execute("PRAGMA synchronous=OFF")
     db.execute("PRAGMA journal_mode=OFF")
     db.execute("DELETE FROM blocked_domains")
