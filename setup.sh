@@ -233,6 +233,11 @@ done
 # ── NetworkManager restart ────────────────────────────────────
 systemctl restart NetworkManager
 
+# ── AI Security Policy ───────────────────────────────────────
+cp "$BINDIR/AI_POLICY.md" "$BINDIR/AI_POLICY.md" 2>/dev/null || true
+chmod 444 "$BINDIR/AI_POLICY.md" 2>/dev/null || true
+chattr +i "$BINDIR/AI_POLICY.md" 2>/dev/null || true
+
 echo ""
 echo "=== Setup Complete (v2 SQLite DNS) ==="
 echo ""
