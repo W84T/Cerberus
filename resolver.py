@@ -11,7 +11,49 @@ log = logging.getLogger("cerberus-resolve")
 DEFAULT_DB = "/opt/cerberus/cerberus.db"
 DEFAULT_PORT = 5353
 DEFAULT_UPSTREAM = "8.8.8.8:53"
+DEFAULT_CONFIG = "/opt/cerberus/config"
 SOCKET_TIMEOUT = 3
+
+def load_safe_search(config_path):
+    redirects = {}
+    try:
+        in_section = False
+        with open(config_path) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("SAFESEARCH_REDIRECTS=("):
+                    in_section = True
+                    continue
+                if in_section:
+                    if line.startswith(")"):
+                        break
+                    line = line.strip('"').strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        ip, domain = parts[0], parts[1]
+                        redirects[domain.lower()] = ip
+        log.info(f"safe search: {len(redirects)} redirect rules loaded")
+    except FileNotFoundError:
+        log.warning(f"config not found: {config_path}")
+    return redirects
+
+
+def make_redirect_reply(data, redirect_ip):
+    ip_bytes = socket.inet_aton(redirect_ip)
+    hdr = data[:2] + b"\x81\x80" + data[4:6] + b"\x00\x01" + data[8:12]
+    qend = 12
+    while qend < len(data) and data[qend] != 0:
+        if data[qend] & 0xC0 == 0xC0:
+            qend += 2
+            break
+        qend = qend + data[qend] + 1
+    qend += 5
+    ans = hdr + data[12:qend]
+    ans += b"\xc0\x0c\x00\x01\x00\x01\x00\x00\x00\x3c\x00\x04" + ip_bytes
+    return ans
+
 
 def parse_domain(data, offset=12):
     parts = []
@@ -48,13 +90,15 @@ def make_nxdomain(data):
     return data[:2] + b"\x81\x83" + data[4:6] + b"\x00\x00\x00\x00" + data[12:]
 
 class Resolver:
-    def __init__(self, db_path, upstream):
+    def __init__(self, db_path, upstream, config_path=DEFAULT_CONFIG):
         self.db_path = db_path
         self.upstream_host, self.upstream_port = self._parse_upstream(upstream)
+        self.safe_search = load_safe_search(config_path)
         self._local = threading.local()
         self._db_lock = threading.Lock()
         self._blocked_count = 0
         self._forward_count = 0
+        self._redirect_count = 0
         self._log_interval = 300
         self._last_log = 0
 
@@ -129,6 +173,12 @@ class Resolver:
         if domain and self._is_blocked(domain):
             self._blocked_count += 1
             reply = make_blocked_reply(data, domain)
+            return reply
+
+        if domain and domain.lower() in self.safe_search:
+            redirect_ip = self.safe_search[domain.lower()]
+            self._redirect_count += 1
+            reply = make_redirect_reply(data, redirect_ip)
             return reply
 
         self._forward_count += 1
