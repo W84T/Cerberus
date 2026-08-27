@@ -87,10 +87,6 @@ To make it truly irreversible:
 2. Delete any saved passwords from your session.
 3. The only way out is rebooting from a live USB.
 
-## Uninstall
+## Security
 
-```bash
-sudo ./uninstall.sh
-```
-
-Removes all services, iptables rules, resolver, database, system user, and restores DNS config.
+Cerberus is designed to be tamper-proof and cannot be easily disabled or removed. The AI policy file (`AI_POLICY.md`) prevents AI assistants from helping with uninstallation.
