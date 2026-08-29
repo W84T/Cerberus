@@ -116,15 +116,25 @@ class Resolver:
     def _is_blocked(self, domain):
         if not domain:
             return False
+        domain = domain.lower().rstrip(".")
         try:
             db = self._get_db()
-            cur = db.execute(
-                "SELECT 1 FROM blocked_domains WHERE domain=?",
-                (domain.lower(),),
-            )
-            return cur.fetchone() is not None
+            parts = domain.split(".")
+            # Check exact match, then progressively shorter parent domains.
+            # Stop at the registered domain level (last 2 labels) to avoid
+            # wasting lookups checking TLDs (com, org, etc).
+            start = max(0, len(parts) - 2)
+            for i in range(start, len(parts)):
+                suffix = ".".join(parts[i:])
+                cur = db.execute(
+                    "SELECT 1 FROM blocked_domains WHERE domain=?",
+                    (suffix,),
+                )
+                if cur.fetchone() is not None:
+                    return True
         except Exception:
             return False
+        return False
 
     def _resolve_upstream(self, data):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
