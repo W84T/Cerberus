@@ -40,7 +40,7 @@ case "${1:-help}" in
     else
       echo "  iptables rules:  MISSING"
     fi
-    if systemctl is-active --quiet cerberus-resolver.service 2>/dev/null; then
+    if systemctl is-active --quiet "${UNIT_RESOLVER:-cerberus-resolver.service}" 2>/dev/null; then
       echo "  DNS resolver:    ACTIVE"
     else
       echo "  DNS resolver:    INACTIVE"

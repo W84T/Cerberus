@@ -43,9 +43,9 @@ PYEOF
 ensure_resolver() {
   local tries
   for tries in 1 2 3; do
-    if ! systemctl is-active --quiet cerberus-resolver.service 2>/dev/null; then
+    if ! systemctl is-active --quiet "$UNIT_RESOLVER" 2>/dev/null; then
       log "Starting resolver daemon..."
-      systemctl start cerberus-resolver.service 2>/dev/null || true
+      systemctl start "$UNIT_RESOLVER" 2>/dev/null || true
       sleep 1
     fi
     if dns_reachable; then
@@ -55,9 +55,9 @@ ensure_resolver() {
   done
   log "WARNING: resolver daemon not answering DNS!"
   # Force restart of a process that's alive but not responding
-  if systemctl is-active --quiet cerberus-resolver.service 2>/dev/null; then
+  if systemctl is-active --quiet "$UNIT_RESOLVER" 2>/dev/null; then
     log "Resolver process alive but not responding, restarting..."
-    systemctl restart cerberus-resolver.service 2>/dev/null || true
+    systemctl restart "$UNIT_RESOLVER" 2>/dev/null || true
   fi
   return 1
 }
@@ -182,8 +182,7 @@ ensure_guardians() {
   # (or even stop of two units) can take Cerberus down for more than a few
   # seconds. This runs from the 60s timer, the instant watchdog, and the
   # watcher-of-the-watcher, providing mutual trampoline recovery.
-  for u in cerberus-watchdog2.service cerberus-watchdog.timer \
-           cerberus-watchdog-watcher.service cerberus-watchdog-watcher.timer; do
+  for u in "$UNIT_WDI" "$UNIT_WD_TIMER" "$UNIT_WDW" "$UNIT_WDW_TIMER"; do
     if ! systemctl is-enabled --quiet "$u" 2>/dev/null; then
       systemctl enable "$u" 2>/dev/null || true
       log "re-enabled $u"
@@ -194,7 +193,7 @@ ensure_guardians() {
     fi
   done
   # Explicitly ensure the two persistent daemons that matter are up
-  for d in cerberus-watchdog2.service cerberus-resolver.service; do
+  for d in "$UNIT_WDI" "$UNIT_RESOLVER"; do
     if ! systemctl is-active --quiet "$d" 2>/dev/null; then
       systemctl start "$d" 2>/dev/null || true
       log "restarted $d"
@@ -208,7 +207,7 @@ save_state() {
   entry_count=$(python3 -c "import sqlite3; db=sqlite3.connect('$DB_PATH'); print(db.execute('SELECT count(*) FROM blocked_domains').fetchone()[0])" 2>/dev/null || echo 0)
   echo "db_entries=$entry_count" > "$state_file"
   iptables -L CERBERUS -n 2>/dev/null | grep -q 'dpt:853' && echo "iptables=active" >> "$state_file" || echo "iptables=inactive" >> "$state_file"
-  systemctl is-active --quiet cerberus-resolver.service 2>/dev/null && echo "resolver=active" >> "$state_file" || echo "resolver=inactive" >> "$state_file"
+  systemctl is-active --quiet "$UNIT_RESOLVER" 2>/dev/null && echo "resolver=active" >> "$state_file" || echo "resolver=inactive" >> "$state_file"
   chmod 644 "$state_file" 2>/dev/null || true
 }
 
@@ -228,7 +227,12 @@ do_update() {
   git clone --depth 1 "$git_url" "$tmpdir" 2>/dev/null || { log "git clone failed"; rm -rf "$tmpdir"; return 1; }
 
   log "Updating installed files..."
-  for f in "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/config" "$BINDIR/custom-block.txt" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py"; do
+  # Preserve the per-install randomized unit mapping across the config update
+  local saved_units=""
+  if grep -qF "# ==BEGIN RANDOMIZED UNIT MAPPING==" "$BINDIR/config" 2>/dev/null; then
+    saved_units=$(sed -n "/# ==BEGIN RANDOMIZED UNIT MAPPING==/,/# ==END RANDOMIZED UNIT MAPPING==/p" "$BINDIR/config")
+  fi
+  for f in "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/config" "$BINDIR/custom-block.txt" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/watchdog.py" "$BINDIR/watcher.py"; do
     chattr -i "$f" 2>/dev/null || true
   done
   cp "$tmpdir/core.sh" "$BINDIR/core.sh"
@@ -236,13 +240,22 @@ do_update() {
   cp "$tmpdir/config" "$BINDIR/config"
   cp "$tmpdir/resolver.py" "$BINDIR/resolver.py"
   cp "$tmpdir/blocklist_updater.py" "$BINDIR/blocklist_updater.py"
+  [[ -f "$tmpdir/watchdog.py" ]] && cp "$tmpdir/watchdog.py" "$BINDIR/watchdog.py" || true
+  [[ -f "$tmpdir/watcher.py" ]] && cp "$tmpdir/watcher.py" "$BINDIR/watcher.py" || true
   [[ -f "$tmpdir/custom-block.txt" ]] && cp "$tmpdir/custom-block.txt" "$BINDIR/custom-block.txt" || true
+  if [[ -n "$saved_units" ]] && ! grep -qF "# ==BEGIN RANDOMIZED UNIT MAPPING==" "$BINDIR/config"; then
+    printf '\n%s\n' "$saved_units" >> "$BINDIR/config"
+  fi
   chmod +x "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py"
   rm -rf "$tmpdir"
 
   log "Re-applying rules..."
   source "$BINDIR/config"
   apply_iptables
+  # Re-lock the protected files
+  for f in "$BINDIR/core.sh" "$BINDIR/resolver.py" "$BINDIR/config" "$BINDIR/watchdog.py"; do
+    chattr +i "$f" 2>/dev/null || true
+  done
   log "Update complete"
 }
 

@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-Cerberus watcher-of-the-watcher.
+Cerberus watcher-of-the-watcher (redundant backstop).
 
-Runs on a 30s timer (cerberus-watchdog-watcher.timer). It is the redundant
-backstop that guarantees the instant watchdog (cerberus-watchdog2) and the
-resolver stay alive, and that all guardian units stay armed. Combined with
-the instant watchdog guarding the timers back, no single `systemctl stop`
-can take Cerberus down for more than a few seconds.
+Runs on a timer (cerberus-watchdog-watcher.timer). It is the redundant
+backstop that guarantees the instant watchdog and the resolver stay alive,
+and that all guardian units stay armed. Unit names are loaded from
+/opt/cerberus/config (randomized per install).
 """
 import subprocess
 import sys
@@ -15,11 +14,40 @@ import logging
 logging.basicConfig(format="[cerberus-watcher] %(message)s", level=logging.INFO)
 log = logging.getLogger("cerberus-watcher")
 
+CONFIG = "/opt/cerberus/config"
+
+DEFAULTS = {
+    "UNIT_WDI": "cerberus-watchdog2.service",
+    "UNIT_RESOLVER": "cerberus-resolver.service",
+    "UNIT_WD_TIMER": "cerberus-watchdog.timer",
+    "UNIT_WDW_TIMER": "cerberus-watchdog-watcher.timer",
+    "UNIT_CORE": "cerberus.service",
+}
+
+
+def load_config():
+    d = dict(DEFAULTS)
+    try:
+        with open(CONFIG) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, _, v = line.partition("=")
+                k, v = k.strip(), v.strip().strip('"')
+                if k in d:
+                    d[k] = v
+    except FileNotFoundError:
+        pass
+    return d
+
+
+cfg = load_config()
 GUARDIANS = [
-    "cerberus-watchdog2.service",
-    "cerberus-resolver.service",
-    "cerberus-watchdog.timer",
-    "cerberus-watchdog-watcher.timer",
+    cfg["UNIT_WDI"],
+    cfg["UNIT_RESOLVER"],
+    cfg["UNIT_WD_TIMER"],
+    cfg["UNIT_WDW_TIMER"],
 ]
 
 

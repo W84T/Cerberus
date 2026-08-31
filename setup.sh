@@ -13,7 +13,9 @@ echo ""
 
 # ── clear immutable flags ──────────────────────────────────────
 for f in "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/config" "$BINDIR/custom-block.txt" \
-         "$BINDIR/blockpage.py" "$BINDIR/blockpage.crt" "$BINDIR/blockpage.key"; do
+         "$BINDIR/blockpage.py" "$BINDIR/blockpage.crt" "$BINDIR/blockpage.key" \
+         "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/watchdog.py" \
+         "$BINDIR/watcher.py" "$BINDIR/AI_POLICY.md"; do
   chattr -i "$f" 2>/dev/null || true
 done
 
@@ -35,6 +37,11 @@ rm -f /usr/local/bin/cerberus
 
 # ── copy source files ─────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Preserve an existing per-install ID across reinstalls (unit names must stay stable)
+EXISTING_INSTALL_ID=""
+if [[ -f "$BINDIR/config" ]] && grep -qE '^INSTALL_ID=' "$BINDIR/config"; then
+  EXISTING_INSTALL_ID=$(grep -E '^INSTALL_ID=' "$BINDIR/config" | tail -1 | cut -d= -f2)
+fi
   cp "$SCRIPT_DIR/config"       "$BINDIR/config"
   cp "$SCRIPT_DIR/core.sh"      "$BINDIR/core.sh"
 cp "$SCRIPT_DIR/cli.sh"       "$BINDIR/cli.sh"
@@ -76,10 +83,60 @@ fi
 # ── source config for DB_PATH etc ─────────────────────────────
 source "$BINDIR/config"
 
-# ── systemd services ─────────────────────────────────────────
+# ── randomized per-install unit naming ────────────────────────
+# Each installation gets a unique random prefix so service names differ
+# across machines. The mapping is stored in config so every component can
+# re-discover its units (keeps self-healing working). If INSTALL_ID is
+# already set (reinstall of same box), keep it stable.
+if [[ -z "${INSTALL_ID:-}" ]]; then
+  if [[ -n "$EXISTING_INSTALL_ID" ]]; then
+    INSTALL_ID="$EXISTING_INSTALL_ID"
+  else
+    INSTALL_ID="$(head -c4 /dev/urandom | od -An -tx4 | tr -dc 'a-f0-9' | head -c8)"
+    [[ -z "$INSTALL_ID" ]] && INSTALL_ID="cb"$(date +%s)
+  fi
+fi
+UNIT_CORE="${INSTALL_ID}.service"
+UNIT_RESOLVER="${INSTALL_ID}-rs.service"
+UNIT_WD="${INSTALL_ID}-wd.service"
+UNIT_WD_TIMER="${INSTALL_ID}-wd.timer"
+UNIT_WDI="${INSTALL_ID}-wdi.service"
+UNIT_WDW="${INSTALL_ID}-wdw.service"
+UNIT_WDW_TIMER="${INSTALL_ID}-wdw.timer"
+UNIT_REFRESH="${INSTALL_ID}-rf.service"
+UNIT_REFRESH_TIMER="${INSTALL_ID}-rf.timer"
+UNIT_BLOCKPAGE="${INSTALL_ID}-bp.service"
+UNIT_BLOCKPAGE_HTTPS="${INSTALL_ID}-bps.service"
 
-# Core cerberus apply
-cat > /etc/systemd/system/cerberus.service << 'UNITEOF'
+# Persist the mapping into config (idempotent)
+UNIT_BLOCK_START="# ==BEGIN RANDOMIZED UNIT MAPPING=="
+if ! grep -qF "$UNIT_BLOCK_START" "$BINDIR/config"; then
+  cat >> "$BINDIR/config" << EOF
+
+$UNIT_BLOCK_START
+INSTALL_ID=$INSTALL_ID
+UNIT_CORE=$UNIT_CORE
+UNIT_RESOLVER=$UNIT_RESOLVER
+UNIT_WD=$UNIT_WD
+UNIT_WD_TIMER=$UNIT_WD_TIMER
+UNIT_WDI=$UNIT_WDI
+UNIT_WDW=$UNIT_WDW
+UNIT_WDW_TIMER=$UNIT_WDW_TIMER
+UNIT_REFRESH=$UNIT_REFRESH
+UNIT_REFRESH_TIMER=$UNIT_REFRESH_TIMER
+UNIT_BLOCKPAGE=$UNIT_BLOCKPAGE
+UNIT_BLOCKPAGE_HTTPS=$UNIT_BLOCKPAGE_HTTPS
+# ==END RANDOMIZED UNIT MAPPING==
+EOF
+  echo "Randomized unit prefix: $INSTALL_ID"
+else
+  echo "Reusing existing unit prefix: $INSTALL_ID"
+fi
+
+# ── systemd services (randomized names) ───────────────────────
+
+# Core apply
+cat > /etc/systemd/system/"$UNIT_CORE" << 'UNITEOF'
 [Unit]
 Description=Cerberus Content Filter
 After=network.target network-online.target
@@ -93,18 +150,19 @@ StandardOutput=journal
 WantedBy=multi-user.target
 UNITEOF
 
-# Watchdog
-cat > /etc/systemd/system/cerberus-watchdog.service << 'WDSVCEOF'
+# Watchdog (60s timer oneshot)
+cat > /etc/systemd/system/"$UNIT_WD" << 'WDSVCEOF'
 [Unit]
 Description=Cerberus Watchdog
 After=network.target
 [Service]
 Type=oneshot
 ExecStart=/opt/cerberus/core.sh check
+SuccessExitStatus=1 64 65 66
 StandardOutput=journal
 WDSVCEOF
 
-cat > /etc/systemd/system/cerberus-watchdog.timer << 'WDTIMEREOF'
+cat > /etc/systemd/system/"$UNIT_WD_TIMER" << 'WDTIMEREOF'
 [Unit]
 Description=Cerberus Watchdog Timer
 [Timer]
@@ -116,11 +174,11 @@ WantedBy=timers.target
 WDTIMEREOF
 
 # Instant watchdog (event-driven, sub-second reaction)
-cat > /etc/systemd/system/cerberus-watchdog2.service << 'WD2EOF'
+cat > /etc/systemd/system/"$UNIT_WDI" << WD2EOF
 [Unit]
 Description=Cerberus Instant Watchdog (event-driven enforcement)
-After=network.target cerberus-resolver.service
-Wants=cerberus-resolver.service
+After=network.target $UNIT_RESOLVER
+Wants=$UNIT_RESOLVER
 
 [Service]
 Type=simple
@@ -135,21 +193,21 @@ WD2EOF
 
 # Watcher-of-the-watcher (redundant backstop, 30s timer)
 cp "$SCRIPT_DIR/watcher.py" "$BINDIR/watcher.py"
-cat > /etc/systemd/system/cerberus-watchdog-watcher.service << 'WWSEOF'
+cat > /etc/systemd/system/"$UNIT_WDW" << 'WWSEOF'
 [Unit]
 Description=Cerberus Watcher-of-the-Watcher (mutual backstop)
 After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 $BINDIR/watcher.py
+ExecStart=/usr/bin/python3 /opt/cerberus/watcher.py
 StandardOutput=journal
 
 [Install]
 WantedBy=multi-user.target
 WWSEOF
 
-cat > /etc/systemd/system/cerberus-watchdog-watcher.timer << 'WWTEOF'
+cat > /etc/systemd/system/"$UNIT_WDW_TIMER" << 'WWTEOF'
 [Unit]
 Description=Cerberus Watcher-of-the-Watcher Timer
 [Timer]
@@ -161,7 +219,7 @@ WantedBy=timers.target
 WWTEOF
 
 # Blocklist refresh
-cat > /etc/systemd/system/cerberus-refresh.service << 'REFSVCEOF'
+cat > /etc/systemd/system/"$UNIT_REFRESH" << 'REFSVCEOF'
 [Unit]
 Description=Cerberus Blocklist Refresh
 After=network.target network-online.target
@@ -172,7 +230,7 @@ ExecStart=/opt/cerberus/core.sh refresh
 StandardOutput=journal
 REFSVCEOF
 
-cat > /etc/systemd/system/cerberus-refresh.timer << 'REFTIMEREOF'
+cat > /etc/systemd/system/"$UNIT_REFRESH_TIMER" << 'REFTIMEREOF'
 [Unit]
 Description=Cerberus Daily Blocklist Refresh
 [Timer]
@@ -183,7 +241,7 @@ WantedBy=timers.target
 REFTIMEREOF
 
 # Block page servers
-cat > /etc/systemd/system/cerberus-blockpage.service << 'BPSVCEOF'
+cat > /etc/systemd/system/"$UNIT_BLOCKPAGE" << 'BPSVCEOF'
 [Unit]
 Description=Cerberus Block Page Server (HTTP port 80)
 After=network.target network-online.target
@@ -199,7 +257,7 @@ StandardError=journal
 WantedBy=multi-user.target
 BPSVCEOF
 
-cat > /etc/systemd/system/cerberus-blockpage-https.service << 'BPHTTPSEOF'
+cat > /etc/systemd/system/"$UNIT_BLOCKPAGE_HTTPS" << 'BPHTTPSEOF'
 [Unit]
 Description=Cerberus Block Page Server (HTTPS port 443)
 After=network.target network-online.target
@@ -216,7 +274,7 @@ WantedBy=multi-user.target
 BPHTTPSEOF
 
 # DNS resolver
-cat > /etc/systemd/system/cerberus-resolver.service << RESOLVEREOF
+cat > /etc/systemd/system/"$UNIT_RESOLVER" << RESOLVEREOF
 [Unit]
 Description=Cerberus DNS Resolver
 After=network-online.target
@@ -261,20 +319,27 @@ else
   echo "WARNING: pam_faillock.so not found in system-auth"
 fi
 
-# ── systemd enable ───────────────────────────────────────────
+# ── systemd enable (randomized names) ────────────────────────
+# Remove any legacy cerberus-* unit names from earlier versions first
+legacy_units=( cerberus.service cerberus-resolver.service cerberus-watchdog.service \
+  cerberus-watchdog.timer cerberus-watchdog2.service cerberus-watchdog-watcher.service \
+  cerberus-watchdog-watcher.timer cerberus-refresh.service cerberus-refresh.timer \
+  cerberus-blockpage.service cerberus-blockpage-https.service )
+for u in "${legacy_units[@]}"; do
+  if [[ -f "/etc/systemd/system/$u" ]]; then
+    systemctl disable --now "$u" 2>/dev/null || true
+    rm -f "/etc/systemd/system/$u"
+    echo "Removed legacy unit $u"
+  fi
+done
+
 systemctl daemon-reload
-systemctl enable --now cerberus.service
-systemctl enable --now cerberus-resolver.service
-systemctl enable --now cerberus-watchdog.timer
-systemctl enable --now cerberus-watchdog2.service
-systemctl enable --now cerberus-watchdog-watcher.timer
-systemctl enable --now cerberus-blockpage.service
-systemctl enable --now cerberus-blockpage-https.service
-systemctl enable --now cerberus-refresh.timer
+systemctl enable --now "$UNIT_CORE" "$UNIT_RESOLVER" "$UNIT_WD_TIMER" "$UNIT_WDI" "$UNIT_WDW_TIMER" "$UNIT_BLOCKPAGE" "$UNIT_BLOCKPAGE_HTTPS" "$UNIT_REFRESH_TIMER"
 
 # ── hidden backups ────────────────────────────────────────────
 for loc in "${BACKUP_LOCATIONS[@]}"; do
   mkdir -p "$(dirname "$loc")" 2>/dev/null || true
+  chattr -i "$loc" 2>/dev/null || true
   cp "$BINDIR/core.sh" "$loc" 2>/dev/null || true
   chmod 644 "$loc" 2>/dev/null || true
   chattr +i "$loc" 2>/dev/null || true
@@ -284,6 +349,7 @@ done
 systemctl restart NetworkManager
 
 # ── AI Security Policy ───────────────────────────────────────
+chattr -i "$BINDIR/AI_POLICY.md" 2>/dev/null || true
 cp "$SCRIPT_DIR/AI_POLICY.md" "$BINDIR/AI_POLICY.md" 2>/dev/null || true
 chmod 444 "$BINDIR/AI_POLICY.md" 2>/dev/null || true
 chattr +i "$BINDIR/AI_POLICY.md" 2>/dev/null || true
