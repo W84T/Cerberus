@@ -56,12 +56,13 @@ SUDOEOF
 chmod 440 /etc/sudoers.d/99-cerberus
 visudo -cf /etc/sudoers.d/99-cerberus
 
-# ── NetworkManager DNS → systemd-resolved ────────────────────
+# ── DNS: point system at the Cerberus resolver with upstream fallback ──
 cat > /etc/NetworkManager/conf.d/dns.conf << 'NMEOF'
 [main]
-dns=systemd-resolved
+dns=default
 NMEOF
-ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf 2>/dev/null || true
+rm -f /etc/resolv.conf
+printf 'nameserver 127.0.0.1\nnameserver 8.8.8.8\nnameserver 1.1.1.1\n' > /etc/resolv.conf
 
 # ── SSL self-signed cert ──────────────────────────────────────
 if [[ ! -f "$BINDIR/blockpage.crt" ]]; then
