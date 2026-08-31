@@ -177,6 +177,31 @@ self_heal() {
   save_state
 }
 
+ensure_guardians() {
+  # Keep the redundant watchdog units armed so no single `systemctl stop`
+  # (or even stop of two units) can take Cerberus down for more than a few
+  # seconds. This runs from the 60s timer, the instant watchdog, and the
+  # watcher-of-the-watcher, providing mutual trampoline recovery.
+  for u in cerberus-watchdog2.service cerberus-watchdog.timer \
+           cerberus-watchdog-watcher.service cerberus-watchdog-watcher.timer; do
+    if ! systemctl is-enabled --quiet "$u" 2>/dev/null; then
+      systemctl enable "$u" 2>/dev/null || true
+      log "re-enabled $u"
+    fi
+    if [[ "$u" == *.timer ]] && ! systemctl is-active --quiet "$u" 2>/dev/null; then
+      systemctl start "$u" 2>/dev/null || true
+      log "restarted $u"
+    fi
+  done
+  # Explicitly ensure the two persistent daemons that matter are up
+  for d in cerberus-watchdog2.service cerberus-resolver.service; do
+    if ! systemctl is-active --quiet "$d" 2>/dev/null; then
+      systemctl start "$d" 2>/dev/null || true
+      log "restarted $d"
+    fi
+  done
+}
+
 save_state() {
   local state_file="/var/lib/cerberus/state"
   local entry_count
@@ -253,7 +278,7 @@ block_rm() {
 
 case "${1:-apply}" in
   apply)     update_db; apply_iptables; ensure_resolver; self_heal ;;
-  check)     verify_blocking; self_heal ;;
+  check)     verify_blocking; self_heal; ensure_guardians ;;
   lock)      do_lock ;;
   block_add) block_add "${2:-}" ;;
   block_rm)  block_rm "${2:-}" ;;

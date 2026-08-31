@@ -64,7 +64,9 @@ To disable an optional category, remove it from `ENABLED_OPTIONALS` in `/opt/cer
 | `cerberus.db` | `/opt/cerberus/cerberus.db` | SQLite database with blocked domains |
 | `cerberus-resolve.service` | systemd | DNS resolver daemon |
 | `cerberus.service` | systemd | Applies blocking on boot |
-| `cerberus-watchdog.timer` | systemd | Runs every 5 min to verify blocking |
+| `cerberus-watchdog.timer` | systemd | Runs every 60s to verify blocking (independent leg) |
+| `cerberus-watchdog2.service` | systemd | Instant watchdog daemon (2s poll) |
+| `cerberus-watchdog-watcher.timer` | systemd | Watcher-of-the-watcher (30s) |
 | `cerberus-blockpage.service` | systemd | Serves block page on port 80 |
 | `cerberus-blockpage-https.service` | systemd | Serves block page on port 443 |
 | `cerberus-refresh.service` | systemd | Fetches fresh blocklist on start |
@@ -78,6 +80,22 @@ To disable an optional category, remove it from `ENABLED_OPTIONALS` in `/opt/cer
 4. **DoH/DoT/DoQ blocks** — DROP rules block known provider IPs on tcp 853 and tcp/udp 443
 
 Backup copies of `core.sh` are stored in hidden locations (listed in `config`) and are also made immutable. If the main script is altered or deleted, it's restored from backup on the next `check` cycle.
+
+## Unstoppable Watchdog System
+
+Cerberus uses **triply-redundant, mutually re-arming watchdogs** so that no single
+command (and no two simultaneous commands) can keep it down:
+
+- **Instant Watchdog** (`cerberus-watchdog2.service`, 2s poll) — re-applies iptables,
+  restarts the resolver, and re-arms the guardian timers.
+- **Watcher-of-the-Watcher** (`cerberus-watchdog-watcher.timer`, 30s) — restarts the
+  Instant Watchdog/resolver and re-arms all units.
+- **60s Timer Leg** (`cerberus-watchdog.timer`) — `core.sh check` runs
+  `ensure_guardians()` for a third, independent recovery path.
+
+This makes the system effectively unstoppable via normal `systemctl`/`iptables`
+commands without needing sudo restriction. See **[WATCHDOG.md](WATCHDOG.md)** for full
+details and verified attack/recovery behavior.
 
 ## Full Lockdown
 

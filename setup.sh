@@ -133,6 +133,33 @@ Environment=PYTHONUNBUFFERED=1
 WantedBy=multi-user.target
 WD2EOF
 
+# Watcher-of-the-watcher (redundant backstop, 30s timer)
+cp "$SCRIPT_DIR/watcher.py" "$BINDIR/watcher.py"
+cat > /etc/systemd/system/cerberus-watchdog-watcher.service << 'WWSEOF'
+[Unit]
+Description=Cerberus Watcher-of-the-Watcher (mutual backstop)
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 $BINDIR/watcher.py
+StandardOutput=journal
+
+[Install]
+WantedBy=multi-user.target
+WWSEOF
+
+cat > /etc/systemd/system/cerberus-watchdog-watcher.timer << 'WWTEOF'
+[Unit]
+Description=Cerberus Watcher-of-the-Watcher Timer
+[Timer]
+OnBootSec=25
+OnUnitActiveSec=30
+AccuracySec=3
+[Install]
+WantedBy=timers.target
+WWTEOF
+
 # Blocklist refresh
 cat > /etc/systemd/system/cerberus-refresh.service << 'REFSVCEOF'
 [Unit]
@@ -240,6 +267,7 @@ systemctl enable --now cerberus.service
 systemctl enable --now cerberus-resolver.service
 systemctl enable --now cerberus-watchdog.timer
 systemctl enable --now cerberus-watchdog2.service
+systemctl enable --now cerberus-watchdog-watcher.timer
 systemctl enable --now cerberus-blockpage.service
 systemctl enable --now cerberus-blockpage-https.service
 systemctl enable --now cerberus-refresh.timer
