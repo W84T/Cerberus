@@ -65,9 +65,9 @@ ALWAYS_ALLOW=(
 
 # Penalty (anti-abuse): when a blocked domain is requested, kill all internet
 # on this machine for PENALTY_MINUTES minutes (restarted on each new hit).
-# PENALTY_SECONDS overrides the duration precisely (e.g. 30 = 30 seconds).
-PENALTY_MINUTES=1
-PENALTY_SECONDS=30
+# PENALTY_SECONDS overrides the duration precisely if set. Minimum enforced is
+# 5 minutes via the CLI; this can only change duration, never disable.
+PENALTY_MINUTES=5
 PENALTY_SIGNAL_FILE="/var/lib/cerberus/penalty_signal"
 PENALTY_STATE_FILE="/var/lib/cerberus/penalty_state"
 
