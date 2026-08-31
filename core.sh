@@ -21,16 +21,45 @@ update_db() {
   fi
 }
 
+dns_reachable() {
+  # Probe the resolver via UDP with a real DNS query, verifying it responds
+  python3 - "$RESOLVER_PORT" << 'PYEOF' 2>/dev/null
+import socket, sys
+port = int(sys.argv[1]) if len(sys.argv) > 1 else 5353
+try:
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(1.5)
+    labels = b"\x03www\x06google\x03com\x00"
+    q = b"\x12\x34\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00" + labels + b"\x00\x01\x00\x01"
+    s.sendto(q, ("127.0.0.1", port))
+    datum, _ = s.recvfrom(512)
+    s.close()
+    sys.exit(0 if len(datum) >= 12 else 1)
+except Exception:
+    sys.exit(1)
+PYEOF
+}
+
 ensure_resolver() {
-  if ! systemctl is-active --quiet cerberus-resolver.service 2>/dev/null; then
-    log "Starting resolver daemon..."
-    systemctl start cerberus-resolver.service 2>/dev/null || true
+  local tries
+  for tries in 1 2 3; do
+    if ! systemctl is-active --quiet cerberus-resolver.service 2>/dev/null; then
+      log "Starting resolver daemon..."
+      systemctl start cerberus-resolver.service 2>/dev/null || true
+      sleep 1
+    fi
+    if dns_reachable; then
+      return 0
+    fi
     sleep 1
+  done
+  log "WARNING: resolver daemon not answering DNS!"
+  # Force restart of a process that's alive but not responding
+  if systemctl is-active --quiet cerberus-resolver.service 2>/dev/null; then
+    log "Resolver process alive but not responding, restarting..."
+    systemctl restart cerberus-resolver.service 2>/dev/null || true
   fi
-  if ! systemctl is-active --quiet cerberus-resolver.service 2>/dev/null; then
-    log "WARNING: resolver daemon not running!"
-    return 1
-  fi
+  return 1
 }
 
 apply_iptables() {
@@ -72,12 +101,22 @@ remove_iptables() {
   iptables -t nat -X CERBERUS_NAT 2>/dev/null || true
 }
 
+nat_redirect_active() {
+  # Verify the OUTPUT jump and the REDIRECT rules actually exist
+  iptables -t nat -C OUTPUT -j CERBERUS_NAT 2>/dev/null &&   iptables -t nat -L CERBERUS_NAT -n 2>/dev/null | grep -q "REDIRECT"
+}
+
+filter_active() {
+  iptables -C OUTPUT -j CERBERUS 2>/dev/null &&   iptables -L CERBERUS -n 2>/dev/null | grep -q 'dpt:853'
+}
+
 verify_blocking() {
-  local failed=0
+  local failed=0 dirty=0
   if [[ ! -f "$DB_PATH" ]]; then
     log "Database missing, updating..."
     update_db true
     ((failed++)) || true
+    dirty=1
   fi
   local entry_count
   entry_count=$(python3 -c "import sqlite3; db=sqlite3.connect('$DB_PATH'); print(db.execute('SELECT count(*) FROM blocked_domains').fetchone()[0])" 2>/dev/null || echo 0)
@@ -85,10 +124,21 @@ verify_blocking() {
     log "Database too small ($entry_count entries), re-updating..."
     update_db true
     ((failed++)) || true
+    dirty=1
   fi
-  iptables -L CERBERUS -n 2>/dev/null | grep -q 'dpt:853' || { log "iptables rules missing, re-applying"; apply_iptables; ((failed++)) || true; }
-  iptables -t nat -L CERBERUS_NAT -n 2>/dev/null | grep -q "REDIRECT" || { log "NAT rules missing, re-applying"; apply_iptables; ((failed++)) || true; }
-  ensure_resolver || true
+  if ! filter_active; then
+    log "CERBERUS filter rules missing, re-applying..."
+    apply_iptables
+    ((failed++)) || true
+    dirty=1
+  fi
+  if ! nat_redirect_active; then
+    log "CERBERUS NAT redirect missing, re-applying..."
+    apply_iptables
+    ((failed++)) || true
+    dirty=1
+  fi
+  ensure_resolver || { ((failed++)) || true; dirty=1; }
   return $failed
 }
 

@@ -41,6 +41,7 @@ cp "$SCRIPT_DIR/cli.sh"       "$BINDIR/cli.sh"
 cp "$SCRIPT_DIR/blockpage.py" "$BINDIR/blockpage.py"
 cp "$SCRIPT_DIR/resolver.py"  "$BINDIR/resolver.py"
 cp "$SCRIPT_DIR/blocklist_updater.py" "$BINDIR/blocklist_updater.py"
+cp "$SCRIPT_DIR/watchdog.py"  "$BINDIR/watchdog.py"
 [[ -f "$SCRIPT_DIR/custom-block.txt" ]] && cp "$SCRIPT_DIR/custom-block.txt" "$BINDIR/custom-block.txt" || true
 
 # ── permissions ───────────────────────────────────────────────
@@ -107,11 +108,30 @@ cat > /etc/systemd/system/cerberus-watchdog.timer << 'WDTIMEREOF'
 [Unit]
 Description=Cerberus Watchdog Timer
 [Timer]
-OnBootSec=60
-OnUnitActiveSec=300
+OnBootSec=30
+OnUnitActiveSec=60
+AccuracySec=5
 [Install]
 WantedBy=timers.target
 WDTIMEREOF
+
+# Instant watchdog (event-driven, sub-second reaction)
+cat > /etc/systemd/system/cerberus-watchdog2.service << 'WD2EOF'
+[Unit]
+Description=Cerberus Instant Watchdog (event-driven enforcement)
+After=network.target cerberus-resolver.service
+Wants=cerberus-resolver.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 $BINDIR/watchdog.py
+Restart=always
+RestartSec=2
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+WD2EOF
 
 # Blocklist refresh
 cat > /etc/systemd/system/cerberus-refresh.service << 'REFSVCEOF'
@@ -219,6 +239,7 @@ systemctl daemon-reload
 systemctl enable --now cerberus.service
 systemctl enable --now cerberus-resolver.service
 systemctl enable --now cerberus-watchdog.timer
+systemctl enable --now cerberus-watchdog2.service
 systemctl enable --now cerberus-blockpage.service
 systemctl enable --now cerberus-blockpage-https.service
 systemctl enable --now cerberus-refresh.timer
@@ -235,7 +256,7 @@ done
 systemctl restart NetworkManager
 
 # ── AI Security Policy ───────────────────────────────────────
-cp "$BINDIR/AI_POLICY.md" "$BINDIR/AI_POLICY.md" 2>/dev/null || true
+cp "$SCRIPT_DIR/AI_POLICY.md" "$BINDIR/AI_POLICY.md" 2>/dev/null || true
 chmod 444 "$BINDIR/AI_POLICY.md" 2>/dev/null || true
 chattr +i "$BINDIR/AI_POLICY.md" 2>/dev/null || true
 
