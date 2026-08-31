@@ -21,6 +21,118 @@ update_db() {
   fi
 }
 
+PENALTY_MINUTES="${PENALTY_MINUTES:-1}"
+PENALTY_SECONDS="${PENALTY_SECONDS:-}"
+PENALTY_SIGNAL_FILE="${PENALTY_SIGNAL_FILE:-/var/lib/cerberus/penalty_signal}"
+PENALTY_STATE_FILE="${PENALTY_STATE_FILE:-/var/lib/cerberus/penalty_state}"
+DESKTOP_USER="${DESKTOP_USER:-}"
+
+penalty_duration() {
+  # Duration in seconds. PENALTY_SECONDS wins if set, else PENALTY_MINUTES*60.
+  if [[ -n "$PENALTY_SECONDS" ]]; then echo "$PENALTY_SECONDS"; else echo "$(( PENALTY_MINUTES * 60 ))"; fi
+}
+
+penalty_text() {
+  # Human label, e.g. "30 seconds" or "5 minutes".
+  if [[ -n "$PENALTY_SECONDS" ]]; then echo "${PENALTY_SECONDS} seconds"; else echo "${PENALTY_MINUTES} minutes"; fi
+}
+
+# Safety net: hard ceiling on a *continuous* block, so repeated hits can never
+# leave the machine permanently offline (e.g. runaway/stale reset loop). Even if
+# the user keeps hitting blocked sites, the block is force-lifted once this
+# ceiling is reached since the penalty first started.
+MAX_PENALTY_SECONDS="${MAX_PENALTY_SECONDS:-600}"
+
+penalty_started_at() {
+  # First-seen time persisted the first time a penalty engages. Empty if none.
+  # `|| true` keeps this from returning non-zero (missing file) so callers using
+  # `var=$(penalty_started_at)` under `set -e` don't abort.
+  sed -n 's/^penalty_started=//p' "$PENALTY_STATE_FILE" 2>/dev/null || true
+}
+
+penalty_active() {
+  [[ -f "$PENALTY_STATE_FILE" ]] || return 1
+  local until start now
+  until=$(sed -n 's/^penalty_until=//p' "$PENALTY_STATE_FILE" 2>/dev/null)
+  [[ -n "$until" ]] || return 1
+  now=$(date +%s)
+  # Safety net: even if the state file is corrupted/huge, never consider the
+  # block active beyond the hard ceiling since it first started.
+  start=$(sed -n 's/^penalty_started=//p' "$PENALTY_STATE_FILE" 2>/dev/null)
+  if [[ -n "$start" ]] && (( now >= start + MAX_PENALTY_SECONDS )); then
+    return 1
+  fi
+  [[ "$now" -lt "$until" ]]
+}
+
+penalty_rule_present() {
+  # Guarded so the (expected) iptables exit code 2 when the chain is absent
+  # can never trigger `set -e` and abort the script.
+  if iptables -C OUTPUT -j CERBERUS_PENALTY 2>/dev/null; then
+    return 0
+  fi
+  return 1
+}
+
+penalty_block() {
+  local now; now=$(date +%s)
+  local start; start=$(penalty_started_at)
+  [[ -z "$start" ]] && start="$now"   # first engagement records the ceiling start
+  local dur; dur=$(penalty_duration)
+  local until=$(( now + dur ))
+  # Cap so a continuous block never exceeds the safety-net ceiling
+  local cap=$(( start + MAX_PENALTY_SECONDS ))
+  if (( until > cap )); then until="$cap"; fi
+  printf 'penalty_until=%s\npenalty_started=%s\n' "$until" "$start" > "$PENALTY_STATE_FILE"
+  chmod 644 "$PENALTY_STATE_FILE" 2>/dev/null || true
+  iptables -N CERBERUS_PENALTY 2>/dev/null || true
+  iptables -F CERBERUS_PENALTY 2>/dev/null || true
+  iptables -A CERBERUS_PENALTY -o lo -j RETURN 2>/dev/null || true
+  iptables -A CERBERUS_PENALTY -j DROP 2>/dev/null || true
+  penalty_rule_present || iptables -I OUTPUT 1 -j CERBERUS_PENALTY 2>/dev/null || true
+  log "PENALTY: internet disabled for $(penalty_text)"
+}
+
+penalty_unblock() {
+  iptables -D OUTPUT -j CERBERUS_PENALTY 2>/dev/null || true
+  iptables -F CERBERUS_PENALTY 2>/dev/null || true
+  iptables -X CERBERUS_PENALTY 2>/dev/null || true
+  rm -f "$PENALTY_STATE_FILE" 2>/dev/null || true
+  log "PENALTY: internet restored"
+}
+
+notify_penalty() {
+  local du="${DESKTOP_USER:-}"
+  [[ -z "$du" ]] && du=$(loginctl list-sessions --no-legend 2>/dev/null | awk 'NF>=4 && $4!="-"{print $3; exit}')
+  [[ -z "$du" ]] && du="w84t"
+  local uid; uid=$(id -u "$du" 2>/dev/null || echo 1000)
+  local msg="Cerberus: blocked content detected. Internet disabled for $(penalty_text)."
+  local envs="DISPLAY=${DISPLAY:-:0} XDG_RUNTIME_DIR=/run/user/$uid DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus"
+  sudo -u "$du" env $envs notify-send -u critical "Cerberus" "$msg" 2>/dev/null || \
+  env $envs notify-send -u critical "Cerberus" "$msg" 2>/dev/null || true
+}
+
+penalty_hit() {
+  # Called by the watchdog when a fresh blocked query is detected.
+  # Extends the penalty window to now+MINUTES, applies the block, clears the
+  # signal, and notifies (only when transitioning from inactive -> active).
+  local was_active=0; penalty_active && was_active=1
+  penalty_block
+  rm -f "$PENALTY_SIGNAL_FILE" 2>/dev/null || true
+  (( was_active == 0 )) && notify_penalty
+}
+
+ensure_penalty() {
+  # Lightweight reconcile: enforce an active penalty, or lift an expired one.
+  # Always returns 0 so callers under `set -e` (e.g. self_heal) don't abort.
+  if penalty_active; then
+    penalty_rule_present || penalty_block
+  else
+    penalty_rule_present && penalty_unblock
+  fi
+  return 0
+}
+
 dns_reachable() {
   # Probe the resolver via UDP with a real DNS query, verifying it responds
   python3 - "$RESOLVER_PORT" << 'PYEOF' 2>/dev/null
@@ -174,6 +286,7 @@ self_heal() {
       fi
     done
   fi
+  ensure_penalty
   save_state
 }
 
@@ -299,5 +412,8 @@ case "${1:-apply}" in
   update)    do_update ;;
   refresh)   do_refresh ;;
   remove_iptables) remove_iptables ;;
-  *)         echo "Usage: cerberus {apply|check|lock|block_add|block_rm|status|update|refresh|remove_iptables}"; exit 1 ;;
+  penalty_hit)     penalty_hit ;;
+  penalty_check)   ensure_penalty ;;
+  penalty_clear)   penalty_unblock ;;
+  *)         echo "Usage: cerberus {apply|check|lock|block_add|block_rm|status|update|refresh|remove_iptables|penalty_hit|penalty_check|penalty_clear}"; exit 1 ;;
 esac

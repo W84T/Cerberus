@@ -62,3 +62,28 @@ ALWAYS_ALLOW=(
   "whatsapp.org"
   "wa.me"
 )
+
+# Penalty (anti-abuse): when a blocked domain is requested, kill all internet
+# on this machine for PENALTY_MINUTES minutes (restarted on each new hit).
+# PENALTY_SECONDS overrides the duration precisely (e.g. 30 = 30 seconds).
+PENALTY_MINUTES=1
+PENALTY_SECONDS=30
+PENALTY_SIGNAL_FILE="/var/lib/cerberus/penalty_signal"
+PENALTY_STATE_FILE="/var/lib/cerberus/penalty_state"
+
+# ==BEGIN RANDOMIZED UNIT MAPPING==
+# This block is rewritten per-install by setup.sh with an 8-char random prefix.
+# It must remain last in the file. You normally never need to edit these.
+INSTALL_ID=00000000
+UNIT_CORE=00000000.service
+UNIT_RESOLVER=00000000-rs.service
+UNIT_WD=00000000-wd.service
+UNIT_WD_TIMER=00000000-wd.timer
+UNIT_WDI=00000000-wdi.service
+UNIT_WDW=00000000-wdw.service
+UNIT_WDW_TIMER=00000000-wdw.timer
+UNIT_REFRESH=00000000-rf.service
+UNIT_REFRESH_TIMER=00000000-rf.timer
+UNIT_BLOCKPAGE=00000000-bp.service
+UNIT_BLOCKPAGE_HTTPS=00000000-bps.service
+# ==END RANDOMIZED UNIT MAPPING==

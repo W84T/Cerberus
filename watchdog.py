@@ -13,6 +13,7 @@ so this works regardless of the generated names on any given machine.
 """
 import sys
 import time
+import os
 import subprocess
 import logging
 
@@ -36,6 +37,8 @@ def load_config():
         "UNIT_WDW_TIMER": "cerberus-watchdog-watcher.timer",
         "UNIT_WDI": "cerberus-watchdog2.service",
         "UNIT_WDW": "cerberus-watchdog-watcher.service",
+        "PENALTY_SIGNAL_FILE": "/var/lib/cerberus/penalty_signal",
+        "PENALTY_STATE_FILE": "/var/lib/cerberus/penalty_state",
     }
     try:
         with open(CONFIG) as f:
@@ -59,6 +62,8 @@ UNIT_WD_TIMER = cfg.get("UNIT_WD_TIMER")
 UNIT_WDW_TIMER = cfg.get("UNIT_WDW_TIMER")
 UNIT_WDI = cfg.get("UNIT_WDI")
 UNIT_WDW = cfg.get("UNIT_WDW")
+PENALTY_SIGNAL_FILE = cfg.get("PENALTY_SIGNAL_FILE", "/var/lib/cerberus/penalty_signal")
+PENALTY_STATE_FILE = cfg.get("PENALTY_STATE_FILE", "/var/lib/cerberus/penalty_state")
 
 # Guardian units this daemon keeps alive (and which keep THIS alive)
 GUARDIANS = [UNIT_WD_TIMER, UNIT_WDW_TIMER]
@@ -153,12 +158,29 @@ def apply():
     subprocess.run([CORE, "check"], capture_output=True)
 
 
+def penalty_signal_pending():
+    return os.path.exists(PENALTY_SIGNAL_FILE)
+
+
+def handle_penalty():
+    try:
+        if penalty_signal_pending():
+            log.warning("blocked query detected - applying internet penalty")
+            subprocess.run([CORE, "penalty_hit"], capture_output=True)
+        # Reconcile expiry regardless each cycle
+        subprocess.run([CORE, "penalty_check"], capture_output=True)
+    except Exception as e:
+        log.warning("penalty error: %s", e)
+
+
 def main():
     log.info("guardian watchdog started (interval=%ss, port=%s)", INTERVAL, RESOLVER_PORT)
     log.info("units: resolver=%s wd_timer=%s wdw_timer=%s wdi=%s", UNIT_RESOLVER, UNIT_WD_TIMER, UNIT_WDW_TIMER, UNIT_WDI)
 
     while True:
         try:
+            handle_penalty()
+
             guardians_repaired = ensure_guardians()
 
             nat = nat_redirect_active()

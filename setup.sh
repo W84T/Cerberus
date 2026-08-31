@@ -33,6 +33,11 @@ RESOLVER_UID=$(id -u cerberus-resolve)
 
 # ── directories ───────────────────────────────────────────────
 mkdir -p "$BINDIR" /var/lib/cerberus /etc/NetworkManager/conf.d
+# Let the unprivileged resolver create/write the penalty signal file even if it
+# is deleted after a reboot/cleanup (it runs as cerberus-resolve, not root).
+chgrp cerberus-resolve /var/lib/cerberus 2>/dev/null || true
+chmod 775 /var/lib/cerberus 2>/dev/null || true
+install -o cerberus-resolve -g cerberus-resolve -m 664 /dev/null /var/lib/cerberus/penalty_signal 2>/dev/null || true
 rm -f /usr/local/bin/cerberus
 
 # ── copy source files ─────────────────────────────────────────
@@ -282,6 +287,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+ExecStartPre=/bin/bash -c "install -o cerberus-resolve -g cerberus-resolve -m 664 /dev/null /var/lib/cerberus/penalty_signal"
 ExecStart=/usr/bin/python3 $BINDIR/resolver.py
 User=cerberus-resolve
 Group=cerberus-resolve

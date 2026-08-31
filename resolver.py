@@ -94,6 +94,8 @@ class Resolver:
         self.db_path = db_path
         self.upstream_host, self.upstream_port = self._parse_upstream(upstream)
         self.safe_search = load_safe_search(config_path)
+        pen = load_penalty_config(config_path)
+        self.penalty_signal = pen["signal"]
         self._local = threading.local()
         self._db_lock = threading.Lock()
         self._blocked_count = 0
@@ -182,6 +184,7 @@ class Resolver:
 
         if domain and self._is_blocked(domain):
             self._blocked_count += 1
+            signal_penalty(self.penalty_signal, domain)
             reply = make_blocked_reply(data, domain)
             return reply
 
@@ -202,6 +205,43 @@ class Resolver:
             if reply is None:
                 reply = make_nxdomain(data)
             return reply
+
+def load_penalty_config(config_path):
+    """Read penalty signal/state file paths from config (defaults if absent)."""
+    pen = {
+        "signal": "/var/lib/cerberus/penalty_signal",
+        "state": "/var/lib/cerberus/penalty_state",
+    }
+    try:
+        with open(config_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, _, v = line.partition("=")
+                k, v = k.strip(), v.strip().strip('"')
+                if k == "PENALTY_SIGNAL_FILE":
+                    pen["signal"] = v
+                elif k == "PENALTY_STATE_FILE":
+                    pen["state"] = v
+    except Exception:
+        pass
+    return pen
+
+
+def signal_penalty(signal_file, domain):
+    """Best-effort write of a penalty trigger for the root watchdog to consume.
+
+    Runs unprivileged; if the signal file isn't writable (install created it with
+    the right owner), this silently becomes a no-op so the resolver never breaks.
+    """
+    try:
+        with open(signal_file, "w") as f:
+            f.write(domain + "\n")
+        os.utime(signal_file, None)
+    except Exception:
+        pass
+
 
 def load_upstream_from_system():
     try:
