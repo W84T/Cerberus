@@ -104,7 +104,9 @@ penalty_unblock() {
 notify_penalty() {
   local du="${DESKTOP_USER:-}"
   [[ -z "$du" ]] && du=$(loginctl list-sessions --no-legend 2>/dev/null | awk 'NF>=4 && $4!="-"{print $3; exit}')
-  [[ -z "$du" ]] && du="w84t"
+  # No desktop user detected: skip the popup (portable; a wrong guess would only
+  # notify a non-existent account). The internet cut still applies.
+  [[ -z "$du" ]] && return 0
   local uid; uid=$(id -u "$du" 2>/dev/null || echo 1000)
   local msg="Cerberus: blocked content detected. Internet disabled for $(penalty_text)."
   local envs="DISPLAY=${DISPLAY:-:0} XDG_RUNTIME_DIR=/run/user/$uid DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$uid/bus"
@@ -358,6 +360,15 @@ do_update() {
   [[ -f "$tmpdir/custom-block.txt" ]] && cp "$tmpdir/custom-block.txt" "$BINDIR/custom-block.txt" || true
   if [[ -n "$saved_units" ]] && ! grep -qF "# ==BEGIN RANDOMIZED UNIT MAPPING==" "$BINDIR/config"; then
     printf '\n%s\n' "$saved_units" >> "$BINDIR/config"
+  fi
+  # Rewrite any template home paths in BACKUP_LOCATIONS to this machine's user
+  # so a self-update doesn't reset per-user backup copies to a template account.
+  local _home
+  _home=$(getent passwd "${SUDO_USER:-$(loginctl list-sessions --no-legend 2>/dev/null | awk 'NF>=4 && $4!="-"{print $3; exit}')}" 2>/dev/null | cut -d: -f6)
+  [[ -z "$_home" ]] && _home=$(getent passwd root | cut -d: -f6)
+  if [[ -n "$_home" ]]; then
+    sed -i "s#/home/[a-zA-Z0-9_.-]*/.config/systemd/user/.helper#$_home/.config/systemd/user/.helper#g" "$BINDIR/config"
+    sed -i "s#/home/[a-zA-Z0-9_.-]*/.local/share/applications/.update#$_home/.local/share/applications/.update#g" "$BINDIR/config"
   fi
   chmod +x "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py"
   rm -rf "$tmpdir"

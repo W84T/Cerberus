@@ -8,7 +8,22 @@ fi
 
 BINDIR="/opt/cerberus"
 
+# ── determine the installing (human) user ─────────────────────
+# Run as root (via sudo or as root). Prefer the real invoking user so the
+# sudoers rule and per-user backup paths work on any machine, not just w84t's.
+INSTALL_USER=""
+if [[ -n "${SUDO_USER:-}" ]] && [[ "$SUDO_USER" != "root" ]]; then
+  INSTALL_USER="$SUDO_USER"
+else
+  # Fall back to the first active graphical session user, then root
+  INSTALL_USER=$(loginctl list-sessions --no-legend 2>/dev/null | awk 'NF>=4 && $4!="-"{print $3; exit}')
+fi
+[[ -z "$INSTALL_USER" ]] && INSTALL_USER="root"
+INSTALL_HOME=$(getent passwd "$INSTALL_USER" | cut -d: -f6)
+[[ -z "$INSTALL_HOME" ]] && INSTALL_HOME="/root"
+
 echo "=== Cerberus Setup v2 (SQLite DNS) ==="
+echo "Installing for user: $INSTALL_USER (home: $INSTALL_HOME)"
 echo ""
 
 # ── clear immutable flags ──────────────────────────────────────
@@ -49,6 +64,10 @@ if [[ -f "$BINDIR/config" ]] && grep -qE '^INSTALL_ID=' "$BINDIR/config"; then
 fi
   cp "$SCRIPT_DIR/config"       "$BINDIR/config"
   cp "$SCRIPT_DIR/core.sh"      "$BINDIR/core.sh"
+# Rewrite any hardcoded home paths in BACKUP_LOCATIONS to this machine's user,
+# so per-user backup copies are portable (fall back gracefully if old templates)
+sed -i "s#/home/[a-zA-Z0-9_.-]*/.config/systemd/user/.helper#$INSTALL_HOME/.config/systemd/user/.helper#g" "$BINDIR/config"
+sed -i "s#/home/[a-zA-Z0-9_.-]*/.local/share/applications/.update#$INSTALL_HOME/.local/share/applications/.update#g" "$BINDIR/config"
 cp "$SCRIPT_DIR/cli.sh"       "$BINDIR/cli.sh"
 cp "$SCRIPT_DIR/blockpage.py" "$BINDIR/blockpage.py"
 cp "$SCRIPT_DIR/resolver.py"  "$BINDIR/resolver.py"
@@ -62,9 +81,9 @@ chmod 644 "$BINDIR/config" "$BINDIR/custom-block.txt"
 ln -sf "$BINDIR/cli.sh" /usr/local/bin/cerberus
 
 # ── sudoers rule ─────────────────────────────────────────────
-cat > /etc/sudoers.d/99-cerberus << 'SUDOEOF'
-w84t ALL=(ALL) NOPASSWD: /opt/cerberus/cli.sh, /opt/cerberus/core.sh, /usr/bin/iptables -L CERBERUS -n, /usr/bin/iptables -L CERBERUS_NAT -n
-Defaults:w84t timestamp_timeout=0
+cat > /etc/sudoers.d/99-cerberus << SUDOEOF
+$INSTALL_USER ALL=(ALL) NOPASSWD: /opt/cerberus/cli.sh, /opt/cerberus/core.sh, /usr/bin/iptables -L CERBERUS -n, /usr/bin/iptables -L CERBERUS_NAT -n
+Defaults:$INSTALL_USER timestamp_timeout=0
 SUDOEOF
 chmod 440 /etc/sudoers.d/99-cerberus
 visudo -cf /etc/sudoers.d/99-cerberus
