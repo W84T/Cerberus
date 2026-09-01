@@ -25,7 +25,16 @@ PENALTY_MINUTES="${PENALTY_MINUTES:-1}"
 PENALTY_SECONDS="${PENALTY_SECONDS:-}"
 PENALTY_SIGNAL_FILE="${PENALTY_SIGNAL_FILE:-/var/lib/cerberus/penalty_signal}"
 PENALTY_STATE_FILE="${PENALTY_STATE_FILE:-/var/lib/cerberus/penalty_state}"
+PENALTY_LOG_FILE="${PENALTY_LOG_FILE:-/var/lib/cerberus/penalty.log}"
 DESKTOP_USER="${DESKTOP_USER:-}"
+
+# Permanent human-readable log of every penalty trigger (with the domain that
+# caused it) and each unblock. Independent of journald, so there's a durable
+# record of WHY the internet was cut even if the journal is cleared.
+penalty_log() {
+  local stamp; stamp=$(date '+%Y-%m-%d %H:%M:%S')
+  echo "$stamp $*" >> "$PENALTY_LOG_FILE" 2>/dev/null || true
+}
 
 penalty_duration() {
   # Duration in seconds. PENALTY_SECONDS wins if set, else PENALTY_MINUTES*60.
@@ -98,6 +107,7 @@ penalty_unblock() {
   iptables -F CERBERUS_PENALTY 2>/dev/null || true
   iptables -X CERBERUS_PENALTY 2>/dev/null || true
   rm -f "$PENALTY_STATE_FILE" 2>/dev/null || true
+  penalty_log "PENALTY LIFTED: internet restored"
   log "PENALTY: internet restored"
 }
 
@@ -119,7 +129,12 @@ penalty_hit() {
   # Extends the penalty window to now+MINUTES, applies the block, clears the
   # signal, and notifies (only when transitioning from inactive -> active).
   local was_active=0; penalty_active && was_active=1
+  # Capture the triggering domain from the resolver's signal file before clearing.
+  local domain=""
+  [[ -f "$PENALTY_SIGNAL_FILE" ]] && domain=$(head -1 "$PENALTY_SIGNAL_FILE" 2>/dev/null | tr -d '\r\n')
+  [[ -z "$domain" ]] && domain="(unknown)"
   penalty_block
+  penalty_log "PENALTY TRIGGERED by blocked domain: $domain -> internet cut for $(penalty_text)"
   rm -f "$PENALTY_SIGNAL_FILE" 2>/dev/null || true
   (( was_active == 0 )) && notify_penalty
 }

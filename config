@@ -70,6 +70,7 @@ ALWAYS_ALLOW=(
 PENALTY_MINUTES=5
 PENALTY_SIGNAL_FILE="/var/lib/cerberus/penalty_signal"
 PENALTY_STATE_FILE="/var/lib/cerberus/penalty_state"
+PENALTY_LOG_FILE="/var/lib/cerberus/penalty.log"
 
 # ==BEGIN RANDOMIZED UNIT MAPPING==
 # This block is rewritten per-install by setup.sh with an 8-char random prefix.
