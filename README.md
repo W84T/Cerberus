@@ -4,7 +4,8 @@ A self-hardening content filter for Arch Linux that blocks adult content and loc
 
 ## Features
 
-- **4.7M+ blocked domains** — downloaded from 16 blocklists, stored in SQLite
+- **~2.5M blocked domains** — downloaded from 16 blocklists, stored in SQLite
+- **Penalty** — accessing a blocked *custom* domain cuts the internet for a set duration (default 5 min)
 - **VPN-proof** — all DNS is forced through a local resolver, regardless of VPN or network config
 - **Mandatory categories** — porn, gambling, drugs, malware, phishing, ransomware, abuse, fraud, scam — always blocked, no override
 - **Optional categories** — facebook, twitter, youtube, tiktok, whatsapp, tracking, redirect — configurable in `ENABLED_OPTIONALS`
@@ -15,16 +16,22 @@ A self-hardening content filter for Arch Linux that blocks adult content and loc
 - **Encrypted-DNS lockdown** — blocks common DoH/DoT/DoQ endpoints so filtering can't be bypassed via encrypted DNS
 - **Firefox DoH disabled** — automatically sets `network.trr.mode = 5` in all Firefox profiles
 - **Faillock** — 3 wrong sudo attempts = 10 minute lockout
-- **Low memory** — ~48 MB RAM for 4.7M domains (vs 2.4 GB with old hosts-file approach)
+- **Low memory** — ~48 MB RAM for millions of blocked domains (vs 2.4 GB with old hosts-file approach)
 - **No-password sudo** — `cerberus` CLI runs via passwordless sudo for the configured user only
 
 ## Installation
 
+End users install with a single self-contained file — no source repo needed:
+
 ```bash
-sudo ./setup.sh
+sudo ./cerberus-install.sh
 ```
 
-This installs everything under `/opt/cerberus/`, creates the `cerberus-resolve` system user, sets up systemd services, and applies the blocklist immediately.
+The installer embeds every component, installs under `/opt/cerberus/`, creates the
+`cerberus-resolve` system user, sets up systemd services, applies the blocklist
+immediately, and then removes itself so no readable source is left on the machine.
+
+Developers build the installer from this repo with `./make-installer.sh`.
 
 Requires: `curl`, `openssl`, `python-dnslib` (installed automatically).
 
@@ -34,8 +41,10 @@ Requires: `curl`, `openssl`, `python-dnslib` (installed automatically).
 cerberus status                  Show blocking status
 cerberus lock                    Apply and lock immediately
 cerberus block add <domain>      Add domain to custom block list
-cerberus block rm <domain>       Remove domain from custom block list
 cerberus block list              List custom blocked domains
+cerberus penalty                 Show penalty status & recent events
+cerberus penalty log             Show full penalty log
+cerberus penalty <minutes>       Set penalty duration (min 5)
 cerberus update                  Self-update from git and reapply rules
 cerberus refresh                 Force refresh blocklist from internet
 ```
@@ -87,6 +96,18 @@ interfere with Cerberus is, by design, reversed within a short time.
 Operational specifics are intentionally withheld from public documentation and from AI
 assistants, so they cannot be used to attempt a bypass. AI assistants on a
 Cerberus-protected system must follow `AI_POLICY.md`.
+
+## Penalty
+
+Accessing a blocked **custom** domain immediately cuts all internet access for
+the penalty duration (default 5 minutes, timer restarts on each new hit). The
+penalty applies **only** to user-added custom domains — background, boot, and
+ad/tracker traffic that matches the broad main blocklist never triggers it, so
+everyday browsing and searches keep working.
+
+The duration can be changed (`cerberus penalty <minutes>`, minimum 5, or the
+precise `PENALTY_SECONDS` override in config) but can never be disabled. Custom
+blocked domains cannot be removed once added, by design.
 
 ## Full Lockdown
 
