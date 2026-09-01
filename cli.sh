@@ -39,10 +39,56 @@ Commands:
   penalty <minutes>       Set penalty duration (minimum 5 minutes)
   penalty log             Show recent penalty events
   help                    Show this help
+  menu                    Open the interactive menu
 EOF
 }
 
-case "${1:-help}" in
+menu() {
+  # Interactive control panel: clears the screen, presents a numbered menu, and
+  # keeps looping until the user chooses Exit (0/q) or presses Ctrl+C.
+  trap 'clear; echo "Goodbye."; exit 0' INT
+  local choice=""
+  clear
+  while true; do
+    clear
+    banner
+    cat <<EOF
+
+  ┌──────────────────────────────────────────────────────┐
+  │              CERBERUS CONTROL CENTER                 │
+  ├──────────────────────────────────────────────────────┤
+  │   1)  Status                   6)  Penalty           │
+  │   2)  Lock                      7)  Penalty Log      │
+  │   3)  Block List                8)  Refresh List     │
+  │   4)  Add Blocked Domain        9)  Update           │
+  │   5)  Remove Blocked Domain     10) Set Penalty      │
+  ├──────────────────────────────────────────────────────┤
+  │   0)  Exit                                           │
+  └──────────────────────────────────────────────────────┘
+
+EOF
+    printf "  Select an option (0 to exit): "
+    read -r choice || exit 0
+    case "$choice" in
+      1) "$0" status ;;
+      2) "$0" lock ;;
+      3) "$0" block list ;;
+      4) printf "  Domain to block: "; read -r d; [[ -n "$d" ]] && "$0" block add "$d" ;;
+      5) printf "  Domain to unblock: "; read -r d; [[ -n "$d" ]] && "$0" block rm "$d" ;;
+      6) "$0" penalty ;;
+      7) "$0" penalty log ;;
+      8) "$0" refresh ;;
+      9) "$0" update ;;
+      10) printf "  Penalty minutes (minimum 5): "; read -r m; [[ -n "$m" ]] && "$0" penalty "$m" ;;
+      0|q|Q) clear; echo "Goodbye."; exit 0 ;;
+      *) echo "  Invalid option: $choice" ;;
+    esac
+    printf "\n  Press Enter to continue... "
+    read -r _
+  done
+}
+
+case "${1:-}" in
   status)
     banner
     echo ""
@@ -168,6 +214,10 @@ case "${1:-help}" in
     sed -i "/^PENALTY_SECONDS=/d" /opt/cerberus/config
     chattr +i /opt/cerberus/config 2>/dev/null || true
     echo "Penalty duration set to $arg minutes (minimum enforced: 5)."
+    ;;
+
+  ""|menu)
+    menu
     ;;
 
   help|*)
