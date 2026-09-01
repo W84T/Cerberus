@@ -96,6 +96,8 @@ class Resolver:
         self.safe_search = load_safe_search(config_path)
         pen = load_penalty_config(config_path)
         self.penalty_signal = pen["signal"]
+        self.penalty_threshold = pen.get("threshold", 3)
+        self.penalty_window = pen.get("window", 60)
         self._local = threading.local()
         self._db_lock = threading.Lock()
         self._blocked_count = 0
@@ -103,6 +105,26 @@ class Resolver:
         self._redirect_count = 0
         self._log_interval = 300
         self._last_log = 0
+        # Rolling record of blocked-query timestamps used to gate the penalty on
+        # a burst (count of hits within a window), so a lone background/boot hit
+        # does not cut the whole internet but sustained bad browsing still does.
+        self._block_hits = []
+        self._block_hits_lock = threading.Lock()
+
+    def _penalty_hit_reached(self):
+        # Record this blocked query and report whether the burst threshold has
+        # been reached within the window. Resets the counter when it fires so the
+        # penalty must re-accumulate hits to re-trigger (never loops forever).
+        import time as _t
+        now = _t.time()
+        with self._block_hits_lock:
+            self._block_hits.append(now)
+            cutoff = now - self.penalty_window
+            self._block_hits[:] = [t for t in self._block_hits if t >= cutoff]
+            if len(self._block_hits) >= self.penalty_threshold:
+                self._block_hits.clear()
+                return True
+            return False
 
     def _parse_upstream(self, upstream):
         if ":" in upstream:
@@ -116,13 +138,12 @@ class Resolver:
         return self._local.db
 
     def _is_blocked(self, domain):
-        # Returns the category of the matching block rule ("custom" for the
-        # intentional list, "blocklist" for the broad mandatory/optional lists)
-        # or None if the domain is not blocked at all. Callers use this to decide
-        # whether a match should only block DNS (blocklist) or also cut the whole
-        # internet via the penalty (custom).
+        # Returns True if the domain matches ANY block rule (custom intent list
+        # or the broad mandatory/optional blocklist). The penalty itself is gated
+        # by a hit-count threshold (see _penalty_hit_reached) so an isolated
+        # background/boot hit doesn't cut the whole internet.
         if not domain:
-            return None
+            return False
         domain = domain.lower().rstrip(".")
         try:
             db = self._get_db()
@@ -134,16 +155,14 @@ class Resolver:
             for i in range(start, len(parts)):
                 suffix = ".".join(parts[i:])
                 cur = db.execute(
-                    "SELECT category FROM blocked_domains WHERE domain=?",
+                    "SELECT 1 FROM blocked_domains WHERE domain=?",
                     (suffix,),
                 )
-                row = cur.fetchone()
-                if row is not None:
-                    cat = row[0]
-                    return "custom" if cat == "custom" else "blocklist"
+                if cur.fetchone() is not None:
+                    return True
         except Exception:
-            return None
-        return None
+            return False
+        return False
 
     def _resolve_upstream(self, data):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -189,18 +208,15 @@ class Resolver:
             raw_type = data[-4:-2] if len(data) >= 4 else b"\x00\x00"
             qtype = int.from_bytes(raw_type, "big")
 
-        if domain:
-            blocked_cat = self._is_blocked(domain)
-            if blocked_cat is not None:
-                self._blocked_count += 1
-                # Only the intentional "custom" list cuts the internet via the
-                # penalty. The broad blocklist (mandatory/optional) only blocks
-                # the specific DNS query, so ordinary browsing/trackers and
-                # boot-time telemetry don't knock out the whole connection.
-                if blocked_cat == "custom":
-                    signal_penalty(self.penalty_signal, domain)
-                reply = make_blocked_reply(data, domain)
-                return reply
+        if domain and self._is_blocked(domain):
+            self._blocked_count += 1
+            # Penalty applies to ANY blocked domain (custom or the broad
+            # blocklist), but only fires once a burst of blocked queries occurs
+            # within the window, so background/boot noise alone won't trip it.
+            if self._penalty_hit_reached():
+                signal_penalty(self.penalty_signal, domain)
+            reply = make_blocked_reply(data, domain)
+            return reply
 
         if domain and domain.lower() in self.safe_search:
             redirect_ip = self.safe_search[domain.lower()]
@@ -225,6 +241,8 @@ def load_penalty_config(config_path):
     pen = {
         "signal": "/var/lib/cerberus/penalty_signal",
         "state": "/var/lib/cerberus/penalty_state",
+        "threshold": 3,
+        "window": 60,
     }
     try:
         with open(config_path) as f:
@@ -238,6 +256,12 @@ def load_penalty_config(config_path):
                     pen["signal"] = v
                 elif k == "PENALTY_STATE_FILE":
                     pen["state"] = v
+                elif k == "PENALTY_HIT_THRESHOLD":
+                    try: pen["threshold"] = int(v)
+                    except Exception: pass
+                elif k == "PENALTY_HIT_WINDOW":
+                    try: pen["window"] = int(v)
+                    except Exception: pass
     except Exception:
         pass
     return pen

@@ -418,14 +418,10 @@ block_add() {
 }
 
 block_rm() {
-  local domain="$1"; [[ -z "$domain" ]] && { echo "Usage: block_rm <domain>"; return 1; }
-  domain=$(echo "$domain" | sed 's|^https\?://||; s|/.*||; s|#.*||')
-  chattr -i "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
-  sed -i "/^$domain$/d" "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
-  sed -i "/^www\.$domain$/d" "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
-  chattr +i "$CUSTOM_BLOCK_FILE" 2>/dev/null || true
-  python3 -c "import sqlite3; db=sqlite3.connect('$DB_PATH'); db.execute('DELETE FROM blocked_domains WHERE domain IN (?,?)', ('$domain','www.$domain')); db.commit(); db.close()" 2>/dev/null || true
-  echo "Removed $domain from block list."
+  # Deliberately removed from the architecture: Cerberus is tamper-resistant
+  # and must not allow blocks to be removed. This stub is unreachable.
+  echo "Removing blocked domains is not permitted under Cerberus policy."
+  return 1
 }
 
 case "${1:-apply}" in
@@ -441,5 +437,5 @@ case "${1:-apply}" in
   penalty_hit)     penalty_hit ;;
   penalty_check)   ensure_penalty ;;
   penalty_clear)   penalty_unblock ;;
-  *)         echo "Usage: cerberus {apply|check|lock|block_add|block_rm|status|update|refresh|remove_iptables|penalty_hit|penalty_check|penalty_clear}"; exit 1 ;;
+  *)         echo "Usage: cerberus {apply|check|lock|block_add|status|update|refresh|remove_iptables|penalty_hit|penalty_check|penalty_clear}"; exit 1 ;;
 esac

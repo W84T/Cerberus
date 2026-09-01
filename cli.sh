@@ -31,7 +31,6 @@ Commands:
   status                  Show blocking status
   lock                    Apply and lock immediately
   block add <domain>      Add domain to block list
-  block rm <domain>       Remove domain from block list
   block list              Show custom blocked domains
   update                  Self-update from git and reinstall
   refresh                 Force refresh blocklist from internet
@@ -61,7 +60,7 @@ menu() {
   │   2)  Lock                      7)  Penalty Log      │
   │   3)  Block List                8)  Refresh List     │
   │   4)  Add Blocked Domain        9)  Update           │
-  │   5)  Remove Blocked Domain     10) Set Penalty      │
+  │   5)  Set Penalty                                    │
   ├──────────────────────────────────────────────────────┤
   │   0)  Exit                                           │
   └──────────────────────────────────────────────────────┘
@@ -74,12 +73,11 @@ EOF
       2) "$0" lock ;;
       3) "$0" block list ;;
       4) printf "  Domain to block: "; read -r d; [[ -n "$d" ]] && "$0" block add "$d" ;;
-      5) printf "  Domain to unblock: "; read -r d; [[ -n "$d" ]] && "$0" block rm "$d" ;;
+      5) printf "  Penalty minutes (minimum 5): "; read -r m; [[ -n "$m" ]] && "$0" penalty "$m" ;;
       6) "$0" penalty ;;
       7) "$0" penalty log ;;
       8) "$0" refresh ;;
       9) "$0" update ;;
-      10) printf "  Penalty minutes (minimum 5): "; read -r m; [[ -n "$m" ]] && "$0" penalty "$m" ;;
       0|q|Q) clear; echo "Goodbye."; exit 0 ;;
       *) echo "  Invalid option: $choice" ;;
     esac
@@ -132,14 +130,6 @@ case "${1:-}" in
         "$CORE" block_add "$domain"
         "$CORE" apply
         ;;
-      rm)
-        if [[ -z "$domain" ]]; then
-          echo "Usage: cerberus block rm <domain>"
-          exit 1
-        fi
-        "$CORE" block_rm "$domain"
-        "$CORE" apply
-        ;;
       list)
         if [[ -f "$CUSTOM_BLOCK_FILE" ]] && [[ -s "$CUSTOM_BLOCK_FILE" ]]; then
           echo "=== Custom Blocked Domains ==="
@@ -149,7 +139,7 @@ case "${1:-}" in
         fi
         ;;
       *)
-        echo "Usage: cerberus block add|rm|list <domain>"
+        echo "Usage: cerberus block add|list <domain>"
         ;;
     esac
     ;;

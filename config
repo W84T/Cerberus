@@ -71,6 +71,12 @@ PENALTY_MINUTES=5
 PENALTY_SIGNAL_FILE="/var/lib/cerberus/penalty_signal"
 PENALTY_STATE_FILE="/var/lib/cerberus/penalty_state"
 PENALTY_LOG_FILE="/var/lib/cerberus/penalty.log"
+# Penalty gating: the penalty applies to ALL blocked domains, but only fires once
+# this many blocked queries occur within the window, so a lone background or
+# boot-time hit (telemetry/trackers) doesn't cut the whole internet while
+# sustained bad browsing still does. Raise THRESHOLD to be less trigger-happy.
+PENALTY_HIT_THRESHOLD=3
+PENALTY_HIT_WINDOW=60
 
 # ==BEGIN RANDOMIZED UNIT MAPPING==
 # This block is rewritten per-install by setup.sh with an 8-char random prefix.
