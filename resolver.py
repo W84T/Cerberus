@@ -116,8 +116,13 @@ class Resolver:
         return self._local.db
 
     def _is_blocked(self, domain):
+        # Returns the category of the matching block rule ("custom" for the
+        # intentional list, "blocklist" for the broad mandatory/optional lists)
+        # or None if the domain is not blocked at all. Callers use this to decide
+        # whether a match should only block DNS (blocklist) or also cut the whole
+        # internet via the penalty (custom).
         if not domain:
-            return False
+            return None
         domain = domain.lower().rstrip(".")
         try:
             db = self._get_db()
@@ -129,14 +134,16 @@ class Resolver:
             for i in range(start, len(parts)):
                 suffix = ".".join(parts[i:])
                 cur = db.execute(
-                    "SELECT 1 FROM blocked_domains WHERE domain=?",
+                    "SELECT category FROM blocked_domains WHERE domain=?",
                     (suffix,),
                 )
-                if cur.fetchone() is not None:
-                    return True
+                row = cur.fetchone()
+                if row is not None:
+                    cat = row[0]
+                    return "custom" if cat == "custom" else "blocklist"
         except Exception:
-            return False
-        return False
+            return None
+        return None
 
     def _resolve_upstream(self, data):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -182,11 +189,18 @@ class Resolver:
             raw_type = data[-4:-2] if len(data) >= 4 else b"\x00\x00"
             qtype = int.from_bytes(raw_type, "big")
 
-        if domain and self._is_blocked(domain):
-            self._blocked_count += 1
-            signal_penalty(self.penalty_signal, domain)
-            reply = make_blocked_reply(data, domain)
-            return reply
+        if domain:
+            blocked_cat = self._is_blocked(domain)
+            if blocked_cat is not None:
+                self._blocked_count += 1
+                # Only the intentional "custom" list cuts the internet via the
+                # penalty. The broad blocklist (mandatory/optional) only blocks
+                # the specific DNS query, so ordinary browsing/trackers and
+                # boot-time telemetry don't knock out the whole connection.
+                if blocked_cat == "custom":
+                    signal_penalty(self.penalty_signal, domain)
+                reply = make_blocked_reply(data, domain)
+                return reply
 
         if domain and domain.lower() in self.safe_search:
             redirect_ip = self.safe_search[domain.lower()]

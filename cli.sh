@@ -7,9 +7,24 @@ fi
 
 CORE="/opt/cerberus/core.sh"
 CUSTOM_BLOCK_FILE="/opt/cerberus/custom-block.txt"
+PENALTY_LOG_FILE="${PENALTY_LOG_FILE:-/var/lib/cerberus/penalty.log}"
+
+banner() {
+  cat <<'EOF'
+     ██████╗███████╗██████╗ ██████╗ ███████╗██████╗ ██╗   ██╗███████╗
+    ██╔════╝██╔════╝██╔══██╗██╔══██╗██╔════╝██╔══██╗██║   ██║██╔════╝
+    ██║     █████╗  ██████╔╝██████╔╝█████╗  ██████╔╝██║   ██║███████╗
+    ██║     ██╔══╝  ██╔══██╗██╔══██╗██╔══╝  ██╔══██╗██║   ██║╚════██║
+    ╚██████╗███████╗██║  ██║██████╔╝███████╗██║  ██║╚██████╔╝███████║
+     ╚═════╝╚══════╝╚═╝  ╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚══════╝
+EOF
+  echo "     Guarding your internet — every query, always."
+}
 
 usage() {
+  banner
   cat <<EOF
+
 Usage: cerberus <command>
 
 Commands:
@@ -22,12 +37,15 @@ Commands:
   refresh                 Force refresh blocklist from internet
   penalty                 Show penalty duration
   penalty <minutes>       Set penalty duration (minimum 5 minutes)
+  penalty log             Show recent penalty events
   help                    Show this help
 EOF
 }
 
 case "${1:-help}" in
   status)
+    banner
+    echo ""
     echo "=== Cerberus Status ==="
     source /opt/cerberus/config
     db_path="${DB_PATH:-/opt/cerberus/cerberus.db}"
@@ -103,14 +121,34 @@ case "${1:-help}" in
 
   penalty)
     arg="${2:-}"
+    if [[ "$arg" == "log" ]]; then
+      banner
+      echo ""
+      if [[ -f "$PENALTY_LOG_FILE" ]] && [[ -s "$PENALTY_LOG_FILE" ]]; then
+        echo "=== Penalty Log ==="
+        cat "$PENALTY_LOG_FILE"
+      else
+        echo "No penalty events recorded yet."
+      fi
+      exit 0
+    fi
     if [[ -z "$arg" ]]; then
-      # Show current duration (in minutes)
+      # Show current duration + recent penalty events
+      banner
+      echo ""
       source /opt/cerberus/config
       pen_sec="${PENALTY_SECONDS:-}"
       if [[ -n "$pen_sec" ]]; then
         printf "Penalty duration: %s seconds\n" "$pen_sec"
       else
         printf "Penalty duration: %s minutes\n" "${PENALTY_MINUTES:-5}"
+      fi
+      echo ""
+      echo "=== Recent Penalty Events ==="
+      if [[ -f "$PENALTY_LOG_FILE" ]] && [[ -s "$PENALTY_LOG_FILE" ]]; then
+        tail -15 "$PENALTY_LOG_FILE"
+      else
+        echo "No penalty events recorded yet."
       fi
       exit 0
     fi
