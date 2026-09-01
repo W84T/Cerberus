@@ -96,8 +96,7 @@ class Resolver:
         self.safe_search = load_safe_search(config_path)
         pen = load_penalty_config(config_path)
         self.penalty_signal = pen["signal"]
-        self.penalty_threshold = pen.get("threshold", 3)
-        self.penalty_window = pen.get("window", 60)
+        self.penalty_state = pen["state"]
         self._local = threading.local()
         self._db_lock = threading.Lock()
         self._blocked_count = 0
@@ -105,26 +104,6 @@ class Resolver:
         self._redirect_count = 0
         self._log_interval = 300
         self._last_log = 0
-        # Rolling record of blocked-query timestamps used to gate the penalty on
-        # a burst (count of hits within a window), so a lone background/boot hit
-        # does not cut the whole internet but sustained bad browsing still does.
-        self._block_hits = []
-        self._block_hits_lock = threading.Lock()
-
-    def _penalty_hit_reached(self):
-        # Record this blocked query and report whether the burst threshold has
-        # been reached within the window. Resets the counter when it fires so the
-        # penalty must re-accumulate hits to re-trigger (never loops forever).
-        import time as _t
-        now = _t.time()
-        with self._block_hits_lock:
-            self._block_hits.append(now)
-            cutoff = now - self.penalty_window
-            self._block_hits[:] = [t for t in self._block_hits if t >= cutoff]
-            if len(self._block_hits) >= self.penalty_threshold:
-                self._block_hits.clear()
-                return True
-            return False
 
     def _parse_upstream(self, upstream):
         if ":" in upstream:
@@ -137,13 +116,14 @@ class Resolver:
             self._local.db = sqlite3.connect(f"file:{self.db_path}?mode=ro&immutable=1", uri=True, timeout=5)
         return self._local.db
 
-    def _is_blocked(self, domain):
-        # Returns True if the domain matches ANY block rule (custom intent list
-        # or the broad mandatory/optional blocklist). The penalty itself is gated
-        # by a hit-count threshold (see _penalty_hit_reached) so an isolated
-        # background/boot hit doesn't cut the whole internet.
+    def _match_source(self, domain):
+        # Returns the source ('mandatory'/'optional'/'custom') of the first
+        # matching block rule for the domain, or None if not blocked. Used so the
+        # penalty fires ONLY for custom (user-intended) domains, never for the
+        # broad mandatory/optional blocklist that background/boot/Google noise
+        # matches against.
         if not domain:
-            return False
+            return None
         domain = domain.lower().rstrip(".")
         try:
             db = self._get_db()
@@ -155,14 +135,21 @@ class Resolver:
             for i in range(start, len(parts)):
                 suffix = ".".join(parts[i:])
                 cur = db.execute(
-                    "SELECT 1 FROM blocked_domains WHERE domain=?",
+                    "SELECT source FROM blocked_domains WHERE domain=? LIMIT 1",
                     (suffix,),
                 )
-                if cur.fetchone() is not None:
-                    return True
+                row = cur.fetchone()
+                if row is not None:
+                    return row[0]
         except Exception:
-            return False
-        return False
+            return None
+        return None
+
+    def _is_blocked(self, domain):
+        # True if the domain matches ANY block rule (custom or the broad
+        # mandatory/optional blocklist). Blocking applies to all categories;
+        # only the penalty is restricted to custom domains.
+        return self._match_source(domain) is not None
 
     def _resolve_upstream(self, data):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -210,10 +197,11 @@ class Resolver:
 
         if domain and self._is_blocked(domain):
             self._blocked_count += 1
-            # Penalty applies to ANY blocked domain (custom or the broad
-            # blocklist), but only fires once a burst of blocked queries occurs
-            # within the window, so background/boot noise alone won't trip it.
-            if self._penalty_hit_reached():
+            # Penalty fires ONLY for custom (user-intended) domains, and fires
+            # immediately on a custom hit. The broad mandatory/optional
+            # blocklist never triggers a penalty, so boot/Google/tracker noise
+            # can't cut the internet.
+            if self._match_source(domain) == "custom":
                 signal_penalty(self.penalty_signal, domain)
             reply = make_blocked_reply(data, domain)
             return reply
