@@ -1,0 +1,7 @@
+[Unit]
+Description=Cerberus Daily Blocklist Refresh
+[Timer]
+OnCalendar=daily
+Persistent=true
+[Install]
+WantedBy=timers.target

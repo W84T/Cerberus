@@ -1,0 +1,81 @@
+# Cerberus Configuration — SQLite DNS Resolver Architecture
+WATCHDOG_INTERVAL=300
+
+# Mandatory categories — always blocked, cannot be overridden
+MANDATORY_BLOCKLIST_URLS=(
+  "https://blocklistproject.github.io/Lists/porn.txt"
+  "https://blocklistproject.github.io/Lists/gambling.txt"
+  "https://blocklistproject.github.io/Lists/drugs.txt"
+  "https://blocklistproject.github.io/Lists/abuse.txt"
+  "https://blocklistproject.github.io/Lists/fraud.txt"
+  "https://blocklistproject.github.io/Lists/malware.txt"
+  "https://blocklistproject.github.io/Lists/phishing.txt"
+  "https://blocklistproject.github.io/Lists/ransomware.txt"
+  "https://blocklistproject.github.io/Lists/scam.txt"
+)
+
+# Optional categories — configurable, can be disabled
+OPTIONAL_BLOCKLIST_URLS=(
+  "https://blocklistproject.github.io/Lists/facebook.txt"
+  "https://blocklistproject.github.io/Lists/twitter.txt"
+  "https://blocklistproject.github.io/Lists/youtube.txt"
+  "https://blocklistproject.github.io/Lists/tiktok.txt"
+  "https://blocklistproject.github.io/Lists/redirect.txt"
+  "https://blocklistproject.github.io/Lists/tracking.txt"
+)
+
+BACKUP_LOCATIONS=(
+  "/usr/share/man/man3/.nss_cache.so"
+  "/var/lib/cerberus/.journal"
+  "/home/w84t/.config/systemd/user/.helper"
+  "/home/w84t/.local/share/applications/.update"
+)
+
+SAFESEARCH_REDIRECTS=(
+  "216.239.38.120 google.com"
+  "216.239.38.120 www.google.com"
+  "13.107.21.200 bing.com"
+  "13.107.21.200 www.bing.com"
+)
+
+CUSTOM_BLOCK_FILE="/opt/cerberus/custom-block.txt"
+GIT_REPO_URL="https://github.com/W84T/Cerberus.git"
+
+# SQLite database for blocking
+DB_PATH="/opt/cerberus/cerberus.db"
+RESOLVER_PORT=5353
+
+# Enabled optional categories (edit to disable)
+ENABLED_OPTIONALS=(
+  "facebook"
+  "twitter"
+  "youtube"
+  "tiktok"
+  "redirect"
+  "tracking"
+)
+
+# Domains always allowed (exact match + all subdomains), even if present in blocklists
+ALWAYS_ALLOW=(
+  "whatsapp.com"
+  "whatsapp.net"
+  "whatsapp.org"
+  "wa.me"
+)
+
+# ==BEGIN RANDOMIZED UNIT MAPPING==
+# This block is rewritten per-install by setup.sh with an 8-char random prefix.
+# It must remain last in the file. You normally never need to edit these.
+INSTALL_ID=00000000
+UNIT_CORE=00000000.service
+UNIT_RESOLVER=00000000-rs.service
+UNIT_WD=00000000-wd.service
+UNIT_WD_TIMER=00000000-wd.timer
+UNIT_WDI=00000000-wdi.service
+UNIT_WDW=00000000-wdw.service
+UNIT_WDW_TIMER=00000000-wdw.timer
+UNIT_REFRESH=00000000-rf.service
+UNIT_REFRESH_TIMER=00000000-rf.timer
+UNIT_BLOCKPAGE=00000000-bp.service
+UNIT_BLOCKPAGE_HTTPS=00000000-bps.service
+# ==END RANDOMIZED UNIT MAPPING==

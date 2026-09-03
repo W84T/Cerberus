@@ -1,0 +1,8 @@
+[Unit]
+Description=Cerberus Blocklist Refresh
+After=network.target network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+ExecStart=/opt/cerberus/core.sh refresh
+StandardOutput=journal
