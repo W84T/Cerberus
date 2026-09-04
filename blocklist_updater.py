@@ -112,11 +112,22 @@ def parse_hosts_line(line):
         return domain
     return None
 
-def download_list(url):
+def download_list(url, show_progress=False):
+    # When installed interactively we show a live progress bar (curl writes it
+    # to stderr, which we let reach the terminal). For non-interactive runs
+    # (systemd refresh, pipeline) we stay quiet.
+    cmd = ["curl", "-L", "--fail", "--max-time", str(CURL_TIMEOUT)]
+    if show_progress:
+        cmd.append("--progress-bar")
+    else:
+        cmd.append("-s")
+    cmd.append(url)
     try:
         result = subprocess.run(
-            ["curl", "-sL", "--max-time", str(CURL_TIMEOUT), url],
-            capture_output=True, timeout=CURL_TIMEOUT + 10,
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=None if show_progress else subprocess.PIPE,
+            timeout=CURL_TIMEOUT + 10,
         )
         if result.returncode != 0:
             return None
@@ -149,31 +160,21 @@ def update_blocklist(db_path, config_path, custom_path):
     all_mandatory = set()
     all_optional = set()
 
+    # Build the ordered download plan so we can show overall progress (i/N).
+    plan = []
     for url in mandatory_urls:
-        name = url_to_name(url)
-        log.info(f"[mandatory] downloading {name}...")
-        text = download_list(url)
-        if text is None:
-            log.warning(f"  failed: {name}")
-            continue
-        count = 0
-        for line in text.splitlines():
-            domain = parse_hosts_line(line)
-            if domain:
-                all_mandatory.add(domain)
-                count += 1
-        log.info(f"  parsed {count} domains from {name}")
-
+        plan.append((url, url_to_name(url), "mandatory", True))
     for url in optional_urls:
         name = url_to_name(url)
-        category = name
-        is_enabled = category in enabled_optionals
-        if not is_enabled:
-            log.info(f"[optional:disabled] skipping {name}")
-            continue
-        status = "enabled"
-        log.info(f"[optional:{status}] downloading {name}...")
-        text = download_list(url)
+        plan.append((url, name, "optional", name in enabled_optionals))
+
+    active = [p for p in plan if not (p[2] == "optional" and not p[3])]
+    total = len(active)
+    interactive = sys.stdout.isatty()
+
+    for idx, (url, name, category, enabled) in enumerate(active, start=1):
+        log.info(f"[{idx}/{total}] {category}: {name} downloading...")
+        text = download_list(url, show_progress=interactive)
         if text is None:
             log.warning(f"  failed: {name}")
             continue
@@ -181,7 +182,9 @@ def update_blocklist(db_path, config_path, custom_path):
         for line in text.splitlines():
             domain = parse_hosts_line(line)
             if domain:
-                if is_enabled:
+                if category == "mandatory":
+                    all_mandatory.add(domain)
+                else:
                     all_optional.add(domain)
                 count += 1
         log.info(f"  parsed {count} domains from {name}")
