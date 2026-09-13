@@ -9,18 +9,16 @@ import ssl
 import socket
 import os
 import sys
-import json
 
 CONFIG = "/opt/cerberus/config"
 CUSTOM_FILE = "/opt/cerberus/custom-block.txt"
-KEYWORDS_FILE = "/opt/cerberus/search-keywords.json"
 CORE = "/opt/cerberus/core.sh"
 
 CUSTOM_DOMAINS = set()
 
 
 def load_config():
-    global CUSTOM_FILE, KEYWORDS_FILE
+    global CUSTOM_FILE
     try:
         with open(CONFIG) as f:
             for line in f:
@@ -31,8 +29,6 @@ def load_config():
                 k, v = k.strip(), v.strip().strip('"')
                 if k == "CUSTOM_BLOCK_FILE":
                     CUSTOM_FILE = v
-                elif k == "SEARCH_KEYWORDS_JSON":
-                    KEYWORDS_FILE = v
     except FileNotFoundError:
         pass
     load_custom()
@@ -100,8 +96,6 @@ p { color: #a0a0b0; font-size: 1em; line-height: 1.6; margin-bottom: 12px; }
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path.split("?")[0] == "/cerberus/keywords.json":
-            return self._serve_keywords()
         domain = self.headers.get("Host", "unknown")
         page = BLOCK_PAGE.replace("__DOMAIN__", domain)
         self.send_response(200)
@@ -110,23 +104,6 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(page.encode())
-
-    def _serve_keywords(self):
-        keywords = []
-        try:
-            with open(KEYWORDS_FILE) as f:
-                data = json.load(f)
-                keywords = data.get("keywords", [])
-        except Exception:
-            pass
-        body = json.dumps({"keywords": keywords}).encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
-
     do_POST = do_GET
     do_HEAD = do_GET
     do_CONNECT = do_GET

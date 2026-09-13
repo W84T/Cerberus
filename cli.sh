@@ -31,9 +31,6 @@ Commands:
   lock                    Apply and lock immediately
   block add <domain>      Add domain to block list
   block list              Show custom blocked domains
-  keyword add <term>      Block searches/pages containing a keyword
-  keyword list            Show blocked keywords
-  keyword enforce         Re-apply browser extension lock
   update                  Self-update from git and reinstall
   refresh                 Force refresh blocklist from internet
   adult-find              Discover & block adult manga/manhwa sites (crt.sh)
@@ -154,26 +151,6 @@ case "${1:-}" in
     echo "=== Cerberus Adult-Site Discovery ==="
     "$CORE" adult_find
     echo "Discovery complete."
-    ;;
-
-  keyword)
-    action="${2:-}"
-    term="${3:-}"
-    case "$action" in
-      add)
-        [[ -z "$term" ]] && { echo "Usage: cerberus keyword add <term>"; exit 1; }
-        "$CORE" keyword_add "$term"
-        ;;
-      list)
-        "$CORE" keyword_list
-        ;;
-      enforce)
-        "$CORE" keyword_enforce
-        ;;
-      *)
-        echo "Usage: cerberus keyword add|list|enforce"
-        ;;
-    esac
     ;;
 
   ""|menu)

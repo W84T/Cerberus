@@ -234,7 +234,7 @@ do_update() {
   if grep -qF "# ==BEGIN RANDOMIZED UNIT MAPPING==" "$BINDIR/config" 2>/dev/null; then
     saved_units=$(sed -n "/# ==BEGIN RANDOMIZED UNIT MAPPING==/,/# ==END RANDOMIZED UNIT MAPPING==/p" "$BINDIR/config")
   fi
-  for f in "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/config" "$BINDIR/custom-block.txt" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/adult_finder.py" "$BINDIR/browser-lock.sh" "$BINDIR/watchdog.py" "$BINDIR/watcher.py"; do
+  for f in "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/config" "$BINDIR/custom-block.txt" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/adult_finder.py" "$BINDIR/watchdog.py" "$BINDIR/watcher.py"; do
     chattr -i "$f" 2>/dev/null || true
   done
   cp "$tmpdir/core.sh" "$BINDIR/core.sh"
@@ -243,7 +243,6 @@ do_update() {
   cp "$tmpdir/resolver.py" "$BINDIR/resolver.py"
   cp "$tmpdir/blocklist_updater.py" "$BINDIR/blocklist_updater.py"
   [[ -f "$tmpdir/adult_finder.py" ]] && cp "$tmpdir/adult_finder.py" "$BINDIR/adult_finder.py" || true
-  [[ -f "$tmpdir/browser-lock.sh" ]] && cp "$tmpdir/browser-lock.sh" "$BINDIR/browser-lock.sh" || true
   [[ -f "$tmpdir/watchdog.py" ]] && cp "$tmpdir/watchdog.py" "$BINDIR/watchdog.py" || true
   [[ -f "$tmpdir/watcher.py" ]] && cp "$tmpdir/watcher.py" "$BINDIR/watcher.py" || true
   [[ -f "$tmpdir/custom-block.txt" ]] && cp "$tmpdir/custom-block.txt" "$BINDIR/custom-block.txt" || true
@@ -259,8 +258,7 @@ do_update() {
     sed -i "s#/home/[a-zA-Z0-9_.-]*/.config/systemd/user/.helper#$_home/.config/systemd/user/.helper#g" "$BINDIR/config"
     sed -i "s#/home/[a-zA-Z0-9_.-]*/.local/share/applications/.update#$_home/.local/share/applications/.update#g" "$BINDIR/config"
   fi
-  chmod +x "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/adult_finder.py" "$BINDIR/browser-lock.sh"
-  bash "$BINDIR/browser-lock.sh" enforce >/dev/null 2>&1 || log "browser-lock failed"
+  chmod +x "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/adult_finder.py"
   rm -rf "$tmpdir"
 
   log "Re-applying rules..."
@@ -300,72 +298,12 @@ block_rm() {
   return 1
 }
 
-keyword_add() {
-  local kw="${2:-}"
-  [[ -z "$kw" ]] && { echo "Usage: keyword_add <term>"; return 1; }
-  chattr -i "$BINDIR/config" 2>/dev/null || true
-  python3 - "$kw" << 'PYEOF' || true
-import sys
-kw = sys.argv[1]
-cfg = "/opt/cerberus/config"
-with open(cfg) as f:
-    lines = f.readlines()
-added = False
-for i, ln in enumerate(lines):
-    if ln.strip().startswith("SEARCH_BLOCK_KEYWORDS=("):
-        j = i + 1
-        while j < len(lines) and not lines[j].strip().startswith(")"):
-            j += 1
-        if any(('"%s"' % kw) in lines[k] for k in range(i + 1, j)):
-            print("Keyword already blocked.")
-            sys.exit(0)
-        lines.insert(j, '  "%s"\n' % kw)
-        added = True
-        break
-if not added:
-    print("SEARCH_BLOCK_KEYWORDS section not found in config.")
-    sys.exit(1)
-with open(cfg, "w") as f:
-    f.writelines(lines)
-print("Added keyword: %s" % kw)
-PYEOF
-  chattr +i "$BINDIR/config" 2>/dev/null || true
-  bash "$BINDIR/browser-lock.sh" enforce >/dev/null 2>&1 || true
-  echo "Keyword will now block matching pages within ~60s."
-}
-
-keyword_list() {
-  echo "=== Blocked Search Keywords ==="
-  python3 -c "
-import sys
-sys.path.insert(0, '/opt/cerberus')
-kws = []
-in_sec = False
-for line in open('/opt/cerberus/config'):
-    line = line.strip()
-    if line.startswith('SEARCH_BLOCK_KEYWORDS=('):
-        in_sec = True
-        continue
-    if in_sec:
-        if line == ')':
-            break
-        s = line.strip('\"')
-        if s and not s.startswith('#'):
-            kws.append(s)
-for k in kws:
-    print('  - ' + k)
-" 2>/dev/null || echo "  (no keywords configured)"
-}
-
 case "${1:-apply}" in
   apply)     update_db; apply_iptables; ensure_resolver; self_heal ;;
   check)     verify_blocking; self_heal; ensure_guardians ;;
   lock)      do_lock ;;
   block_add) block_add "${2:-}" ;;
   block_rm)  block_rm "${2:-}" ;;
-  keyword_add) keyword_add "$@" ;;
-  keyword_list) keyword_list ;;
-  keyword_enforce) bash "$BINDIR/browser-lock.sh" enforce || true ;;
   status)    save_state; cat /var/lib/cerberus/state 2>/dev/null || echo "state unavailable" ;;
   update)    do_update ;;
   refresh)   do_refresh ;;
