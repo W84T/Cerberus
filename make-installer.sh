@@ -24,9 +24,11 @@ COMPONENTS=(
   blockpage.py
   resolver.py
   blocklist_updater.py
+  adult_finder.py
   watchdog.py
   watcher.py
   AI_POLICY.md
+  cerberus-uninstall.sh
 )
 
 for f in "${COMPONENTS[@]}"; do

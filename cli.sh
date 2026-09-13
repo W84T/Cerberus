@@ -33,6 +33,7 @@ Commands:
   block list              Show custom blocked domains
   update                  Self-update from git and reinstall
   refresh                 Force refresh blocklist from internet
+  adult-find              Discover & block adult manga/manhwa sites (crt.sh)
   help                    Show this help
   menu                    Open the interactive menu
 EOF
@@ -145,6 +146,11 @@ case "${1:-}" in
     echo "=== Cerberus Force Refresh ==="
     "$CORE" refresh
     echo "Refresh complete."
+    ;;
+  adult-find)
+    echo "=== Cerberus Adult-Site Discovery ==="
+    "$CORE" adult_find
+    echo "Discovery complete."
     ;;
 
   ""|menu)

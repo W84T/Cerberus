@@ -131,3 +131,16 @@ pixiv.net
 pixiv.org
 readhentai.com
 wholesomehentai.com
+browser.lol
+browserling.com
+corsproxy.io
+kasmweb.com
+kasm.cloud
+send.win
+oceanbrowser.co
+litebrowser.net
+alphabrowser.xyz
+virtualshield.com
+proxybrowser.xyz
+browsertoweb.com
+browsercam.com

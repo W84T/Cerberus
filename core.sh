@@ -234,7 +234,7 @@ do_update() {
   if grep -qF "# ==BEGIN RANDOMIZED UNIT MAPPING==" "$BINDIR/config" 2>/dev/null; then
     saved_units=$(sed -n "/# ==BEGIN RANDOMIZED UNIT MAPPING==/,/# ==END RANDOMIZED UNIT MAPPING==/p" "$BINDIR/config")
   fi
-  for f in "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/config" "$BINDIR/custom-block.txt" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/watchdog.py" "$BINDIR/watcher.py"; do
+  for f in "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/config" "$BINDIR/custom-block.txt" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/adult_finder.py" "$BINDIR/watchdog.py" "$BINDIR/watcher.py"; do
     chattr -i "$f" 2>/dev/null || true
   done
   cp "$tmpdir/core.sh" "$BINDIR/core.sh"
@@ -242,6 +242,7 @@ do_update() {
   cp "$tmpdir/config" "$BINDIR/config"
   cp "$tmpdir/resolver.py" "$BINDIR/resolver.py"
   cp "$tmpdir/blocklist_updater.py" "$BINDIR/blocklist_updater.py"
+  [[ -f "$tmpdir/adult_finder.py" ]] && cp "$tmpdir/adult_finder.py" "$BINDIR/adult_finder.py" || true
   [[ -f "$tmpdir/watchdog.py" ]] && cp "$tmpdir/watchdog.py" "$BINDIR/watchdog.py" || true
   [[ -f "$tmpdir/watcher.py" ]] && cp "$tmpdir/watcher.py" "$BINDIR/watcher.py" || true
   [[ -f "$tmpdir/custom-block.txt" ]] && cp "$tmpdir/custom-block.txt" "$BINDIR/custom-block.txt" || true
@@ -257,7 +258,7 @@ do_update() {
     sed -i "s#/home/[a-zA-Z0-9_.-]*/.config/systemd/user/.helper#$_home/.config/systemd/user/.helper#g" "$BINDIR/config"
     sed -i "s#/home/[a-zA-Z0-9_.-]*/.local/share/applications/.update#$_home/.local/share/applications/.update#g" "$BINDIR/config"
   fi
-  chmod +x "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py"
+  chmod +x "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/adult_finder.py"
   rm -rf "$tmpdir"
 
   log "Re-applying rules..."
@@ -271,6 +272,7 @@ do_update() {
 }
 
 do_refresh() {
+  python3 "$BINDIR/adult_finder.py" 2>/dev/null || log "adult discovery failed"
   update_db true
   ensure_resolver || true
   log "Blocklist force-refreshed"
@@ -305,6 +307,7 @@ case "${1:-apply}" in
   status)    save_state; cat /var/lib/cerberus/state 2>/dev/null || echo "state unavailable" ;;
   update)    do_update ;;
   refresh)   do_refresh ;;
+  adult_find) python3 "$BINDIR/adult_finder.py" || true; do_refresh ;;
   remove_iptables) remove_iptables ;;
   *)         echo "Usage: cerberus {apply|check|lock|block_add|status|update|refresh|remove_iptables}"; exit 1 ;;
 esac

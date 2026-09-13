@@ -67,6 +67,32 @@ def load_always_allow(config_path):
     return set(entries)
 
 
+def load_adult_found(path):
+    domains = set()
+    try:
+        with open(path) as f:
+            for line in f:
+                line = line.strip().lower()
+                if not line or line.startswith("#") or " " in line:
+                    continue
+                domains.add(line.rstrip("."))
+    except FileNotFoundError:
+        pass
+    return domains
+
+
+def load_string_config(config_path, key):
+    try:
+        with open(config_path) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith(key + "="):
+                    return line.split("=", 1)[1].strip().strip('"')
+    except FileNotFoundError:
+        pass
+    return ""
+
+
 def load_enabled_optionals(config_path):
     names = []
     in_section = False
@@ -96,6 +122,26 @@ def load_custom_blocklist(path):
                 if not line or line.startswith("#"):
                     continue
                 domains.append(line)
+    except FileNotFoundError:
+        pass
+    return domains
+
+def load_blocked_search_engines(config_path):
+    domains = set()
+    in_section = False
+    try:
+        with open(config_path) as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("BLOCKED_SEARCH_ENGINES=("):
+                    in_section = True
+                    continue
+                if in_section:
+                    if line.startswith(")"):
+                        break
+                    entry = line.strip('"').strip().lower().rstrip(".")
+                    if entry and not entry.startswith("#"):
+                        domains.add(entry)
     except FileNotFoundError:
         pass
     return domains
@@ -148,13 +194,20 @@ def update_blocklist(db_path, config_path, custom_path):
 
     mandatory_urls = load_list_section(config_path, "MANDATORY_BLOCKLIST_URLS")
     optional_urls = load_list_section(config_path, "OPTIONAL_BLOCKLIST_URLS")
+    adult_urls = load_list_section(config_path, "ADULT_BLOCKLIST_URLS")
     enabled_optionals = load_enabled_optionals(config_path)
     always_allow = load_always_allow(config_path)
     custom_domains = load_custom_blocklist(custom_path)
+    search_domains = load_blocked_search_engines(config_path)
+    adult_found_path = load_string_config(config_path, "ADULT_FOUND_FILE") or "/opt/cerberus/adult-found.txt"
+    adult_found = load_adult_found(adult_found_path)
 
     log.info(f"mandatory blocklists: {len(mandatory_urls)}")
+    log.info(f"adult blocklists: {len(adult_urls)}")
     log.info(f"optional blocklists: {len(optional_urls)} (enabled: {len(enabled_optionals)})")
     log.info(f"custom domains: {len(custom_domains)}")
+    log.info(f"blocked search engines: {len(search_domains)}")
+    log.info(f"adult-discovered domains: {len(adult_found)}")
     log.info(f"always-allow entries: {len(always_allow)}")
 
     all_mandatory = set()
@@ -163,6 +216,8 @@ def update_blocklist(db_path, config_path, custom_path):
     # Build the ordered download plan so we can show overall progress (i/N).
     plan = []
     for url in mandatory_urls:
+        plan.append((url, url_to_name(url), "mandatory", True))
+    for url in adult_urls:
         plan.append((url, url_to_name(url), "mandatory", True))
     for url in optional_urls:
         name = url_to_name(url)
@@ -192,6 +247,8 @@ def update_blocklist(db_path, config_path, custom_path):
     all_domains = all_mandatory | all_optional
     for domain in custom_domains:
         all_domains.add(domain.lower().strip())
+    all_domains |= search_domains
+    all_domains |= adult_found
 
     def is_allowed(domain):
         for allowed in always_allow:
@@ -222,6 +279,10 @@ def update_blocklist(db_path, config_path, custom_path):
             category = "mandatory"
         elif domain in custom_domains:
             category = "custom"
+        elif domain in search_domains:
+            category = "search"
+        elif domain in adult_found:
+            category = "adult"
         else:
             category = "optional"
         batch.append((domain, "blocklist", category))
@@ -243,7 +304,9 @@ def update_blocklist(db_path, config_path, custom_path):
     mandatory_count = db.execute("SELECT count(*) FROM blocked_domains WHERE category='mandatory'").fetchone()[0]
     optional_count = db.execute("SELECT count(*) FROM blocked_domains WHERE category='optional'").fetchone()[0]
     custom_count = db.execute("SELECT count(*) FROM blocked_domains WHERE category='custom'").fetchone()[0]
-    log.info(f"done: {final} domains (mandatory: {mandatory_count}, optional: {optional_count}, custom: {custom_count})")
+    search_count = db.execute("SELECT count(*) FROM blocked_domains WHERE category='search'").fetchone()[0]
+    adult_count = db.execute("SELECT count(*) FROM blocked_domains WHERE category='adult'").fetchone()[0]
+    log.info(f"done: {final} domains (mandatory: {mandatory_count}, optional: {optional_count}, custom: {custom_count}, search: {search_count}, adult: {adult_count})")
     db.close()
 
 def main():

@@ -29,8 +29,8 @@ echo ""
 # ── clear immutable flags ──────────────────────────────────────
 for f in "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/config" "$BINDIR/custom-block.txt" \
          "$BINDIR/blockpage.py" "$BINDIR/blockpage.crt" "$BINDIR/blockpage.key" \
-         "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/watchdog.py" \
-         "$BINDIR/watcher.py" "$BINDIR/AI_POLICY.md"; do
+         "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/adult_finder.py" \
+         "$BINDIR/watchdog.py" "$BINDIR/watcher.py" "$BINDIR/AI_POLICY.md" "$BINDIR/cerberus-uninstall.sh"; do
   chattr -i "$f" 2>/dev/null || true
 done
 
@@ -69,11 +69,13 @@ cp "$SCRIPT_DIR/cli.sh"       "$BINDIR/cli.sh"
 cp "$SCRIPT_DIR/blockpage.py" "$BINDIR/blockpage.py"
 cp "$SCRIPT_DIR/resolver.py"  "$BINDIR/resolver.py"
 cp "$SCRIPT_DIR/blocklist_updater.py" "$BINDIR/blocklist_updater.py"
+cp "$SCRIPT_DIR/adult_finder.py" "$BINDIR/adult_finder.py"
 cp "$SCRIPT_DIR/watchdog.py"  "$BINDIR/watchdog.py"
 [[ -f "$SCRIPT_DIR/custom-block.txt" ]] && cp "$SCRIPT_DIR/custom-block.txt" "$BINDIR/custom-block.txt" || true
+[[ -f "$SCRIPT_DIR/cerberus-uninstall.sh" ]] && cp "$SCRIPT_DIR/cerberus-uninstall.sh" "$BINDIR/cerberus-uninstall.sh" && chmod +x "$BINDIR/cerberus-uninstall.sh" || true
 
 # ── permissions ───────────────────────────────────────────────
-chmod +x "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/blockpage.py" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py"
+chmod +x "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/blockpage.py" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/adult_finder.py"
 chmod 644 "$BINDIR/config" "$BINDIR/custom-block.txt"
 ln -sf "$BINDIR/cli.sh" /usr/local/bin/cerberus
 
@@ -315,6 +317,7 @@ Restart=always
 RestartSec=5
 Environment=CERBERUS_DB=$BINDIR/cerberus.db
 Environment=CERBERUS_PORT=5353
+Environment=CERBERUS_UPSTREAM=1.1.1.1:53
 
 [Install]
 WantedBy=multi-user.target

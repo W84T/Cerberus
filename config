@@ -14,6 +14,30 @@ MANDATORY_BLOCKLIST_URLS=(
   "https://blocklistproject.github.io/Lists/scam.txt"
 )
 
+# Extra curated adult-content lists — always blocked, like mandatory. These
+# catch adult manga/manhwa and adult sites not covered by blocklistproject.
+ADULT_BLOCKLIST_URLS=(
+  "https://raw.githubusercontent.com/StevenBlack/hosts/master/alternates/porn-only/hosts"
+  "https://raw.githubusercontent.com/4skinSkywalker/Anti-Porn-HOSTS-File/master/HOSTS.txt"
+)
+
+# Auto-discovery of adult manga/manhwa sites via certificate-transparency logs.
+# Every refresh scans crt.sh for these keywords and adds matching domains to
+# ADULT_FOUND_FILE, which is then re-ingested into the block DB. Keep keywords
+# adult-specific — a bare "manhwa" would also block legal SFW webtoons.
+# False positives can be removed from ADULT_FOUND_FILE before the next refresh.
+MATURE_KEYWORDS=(
+  "manhwa18"
+  "18manhwa"
+  "hentaimanhwa"
+  "hmanhwa"
+  "adultmanhwa"
+  "adultmanhua"
+  "manhuaxxx"
+  "toomics"
+)
+ADULT_FOUND_FILE="/opt/cerberus/adult-found.txt"
+
 # Optional categories — configurable, can be disabled
 OPTIONAL_BLOCKLIST_URLS=(
   "https://blocklistproject.github.io/Lists/facebook.txt"
@@ -36,6 +60,45 @@ SAFESEARCH_REDIRECTS=(
   "216.239.38.120 www.google.com"
   "13.107.21.200 bing.com"
   "13.107.21.200 www.bing.com"
+)
+
+# Search engines that CANNOT be forced into family-safe mode at the DNS level
+# (unlike Google/Bing above). They are blocked by the resolver so unfiltered
+# search results can't slip through. Subdomains are covered by the base entry.
+# Add any other engines you want removed. After editing run: cerberus refresh
+BLOCKED_SEARCH_ENGINES=(
+  "duckduckgo.com"
+  "startpage.com"
+  "ecosia.org"
+  "qwant.com"
+  "search.brave.com"
+  "you.com"
+  "yep.com"
+  "kagi.com"
+  "mojeek.com"
+  "presearch.com"
+  "swisscows.com"
+  "searx.be"
+  "metager.de"
+  "searchencrypt.com"
+  "onesearch.com"
+  "dogpile.com"
+  "metacrawler.com"
+  "webcrawler.com"
+  "info.com"
+  "ask.com"
+  "search.aol.com"
+  "search.yahoo.com"
+  "yandex.com"
+  "yandex.ru"
+  "baidu.com"
+  "so.com"
+  "search.naver.com"
+  "search.daum.net"
+  "seznam.cz"
+  "sogou.com"
+  "marginalia.nu"
+  "gigablast.com"
 )
 
 CUSTOM_BLOCK_FILE="/opt/cerberus/custom-block.txt"

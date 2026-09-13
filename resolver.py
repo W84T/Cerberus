@@ -123,10 +123,8 @@ class Resolver:
             db = self._get_db()
             parts = domain.split(".")
             # Check exact match, then progressively shorter parent domains.
-            # Stop at the registered domain level (last 2 labels) to avoid
-            # wasting lookups checking TLDs (com, org, etc).
-            start = max(0, len(parts) - 2)
-            for i in range(start, len(parts)):
+            # Stop before the bare TLD (com, org, etc) to avoid wasted lookups.
+            for i in range(len(parts) - 1):
                 suffix = ".".join(parts[i:])
                 cur = db.execute(
                     "SELECT source FROM blocked_domains WHERE domain=? LIMIT 1",
@@ -223,11 +221,11 @@ def load_upstream_from_system():
             line = line.strip()
             if line.startswith("Current DNS Server:") or line.startswith("DNS Servers:"):
                 ip = line.split(":")[-1].strip().split()[0]
-                if ip:
+                if ip and ip != "127.0.0.1" and not ip.startswith("127."):
                     return ip
     except Exception:
         pass
-    return "8.8.8.8"
+    return "1.1.1.1"
 
 class UDPHandler(threading.Thread):
     def __init__(self, resolver, listen, port):
