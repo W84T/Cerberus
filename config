@@ -126,6 +126,28 @@ ALWAYS_ALLOW=(
   "wa.me"
 )
 
+# Cisdem-style keyword blocking. The Cerberus browser extension cancels any
+# page/search whose URL contains one of these (case-insensitive substring, so
+# "manga" blocks both manga searches and manga-domains). Add terms via:
+#   cerberus keyword add <term>
+# Warning: terms are matched as substrings — short/generic words (sex, xxx)
+# will also block unrelated URLs that happen to contain them.
+SEARCH_BLOCK_KEYWORDS=(
+  "manga"
+  "manhwa"
+  "manhua"
+  "hentai"
+  "porn"
+  "sex"
+  "xxx"
+  "18+"
+  "toomics"
+)
+SEARCH_KEYWORDS_JSON="/opt/cerberus/search-keywords.json"
+EXTENSION_XPI="/opt/cerberus/cerberus-keyword-block.xpi"
+EXTENSION_ID="cerberus-keyword-block@cerberus.local"
+FIREFOX_POLICY="/usr/lib/firefox/distribution/policies.json"
+
 # ==BEGIN RANDOMIZED UNIT MAPPING==
 # This block is rewritten per-install by setup.sh with an 8-char random prefix.
 # It must remain last in the file. You normally never need to edit these.

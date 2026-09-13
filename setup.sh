@@ -30,7 +30,8 @@ echo ""
 for f in "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/config" "$BINDIR/custom-block.txt" \
          "$BINDIR/blockpage.py" "$BINDIR/blockpage.crt" "$BINDIR/blockpage.key" \
          "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/adult_finder.py" \
-         "$BINDIR/watchdog.py" "$BINDIR/watcher.py" "$BINDIR/AI_POLICY.md" "$BINDIR/cerberus-uninstall.sh"; do
+         "$BINDIR/browser-lock.sh" "$BINDIR/watchdog.py" "$BINDIR/watcher.py" \
+         "$BINDIR/AI_POLICY.md" "$BINDIR/cerberus-uninstall.sh"; do
   chattr -i "$f" 2>/dev/null || true
 done
 
@@ -70,14 +71,19 @@ cp "$SCRIPT_DIR/blockpage.py" "$BINDIR/blockpage.py"
 cp "$SCRIPT_DIR/resolver.py"  "$BINDIR/resolver.py"
 cp "$SCRIPT_DIR/blocklist_updater.py" "$BINDIR/blocklist_updater.py"
 cp "$SCRIPT_DIR/adult_finder.py" "$BINDIR/adult_finder.py"
+cp "$SCRIPT_DIR/browser-lock.sh" "$BINDIR/browser-lock.sh"
 cp "$SCRIPT_DIR/watchdog.py"  "$BINDIR/watchdog.py"
 [[ -f "$SCRIPT_DIR/custom-block.txt" ]] && cp "$SCRIPT_DIR/custom-block.txt" "$BINDIR/custom-block.txt" || true
 [[ -f "$SCRIPT_DIR/cerberus-uninstall.sh" ]] && cp "$SCRIPT_DIR/cerberus-uninstall.sh" "$BINDIR/cerberus-uninstall.sh" && chmod +x "$BINDIR/cerberus-uninstall.sh" || true
 
 # ── permissions ───────────────────────────────────────────────
-chmod +x "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/blockpage.py" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/adult_finder.py"
+chmod +x "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/blockpage.py" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/adult_finder.py" "$BINDIR/browser-lock.sh"
 chmod 644 "$BINDIR/config" "$BINDIR/custom-block.txt"
 ln -sf "$BINDIR/cli.sh" /usr/local/bin/cerberus
+
+# Install and pin the Firefox keyword-blocker extension (force-installed via
+# enterprise policy so it cannot be disabled/removed from the browser UI).
+bash "$BINDIR/browser-lock.sh" enforce >/dev/null 2>&1 || log "browser-lock failed (install Firefox and retry with: cerberus keyword enforce)"
 
 # ── sudoers rule ─────────────────────────────────────────────
 cat > /etc/sudoers.d/99-cerberus << SUDOEOF
