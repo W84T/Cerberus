@@ -70,13 +70,15 @@ cp "$SCRIPT_DIR/blockpage.py" "$BINDIR/blockpage.py"
 cp "$SCRIPT_DIR/resolver.py"  "$BINDIR/resolver.py"
 cp "$SCRIPT_DIR/blocklist_updater.py" "$BINDIR/blocklist_updater.py"
 cp "$SCRIPT_DIR/adult_finder.py" "$BINDIR/adult_finder.py"
+cp "$SCRIPT_DIR/firefox-policy.sh" "$BINDIR/firefox-policy.sh"
 cp "$SCRIPT_DIR/watchdog.py"  "$BINDIR/watchdog.py"
 [[ -f "$SCRIPT_DIR/custom-block.txt" ]] && cp "$SCRIPT_DIR/custom-block.txt" "$BINDIR/custom-block.txt" || true
 [[ -f "$SCRIPT_DIR/cerberus-uninstall.sh" ]] && cp "$SCRIPT_DIR/cerberus-uninstall.sh" "$BINDIR/cerberus-uninstall.sh" && chmod +x "$BINDIR/cerberus-uninstall.sh" || true
 
 # ── permissions ───────────────────────────────────────────────
-chmod +x "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/blockpage.py" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/adult_finder.py"
+chmod +x "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/blockpage.py" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/adult_finder.py" "$BINDIR/firefox-policy.sh"
 chmod 644 "$BINDIR/config" "$BINDIR/custom-block.txt"
+bash "$BINDIR/firefox-policy.sh" enforce >/dev/null 2>&1 || log "browser policy apply failed"
 ln -sf "$BINDIR/cli.sh" /usr/local/bin/cerberus
 
 # ── sudoers rule ─────────────────────────────────────────────

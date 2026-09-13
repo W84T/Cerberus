@@ -34,6 +34,7 @@ Commands:
   update                  Self-update from git and reinstall
   refresh                 Force refresh blocklist from internet
   adult-find              Discover & block adult manga/manhwa sites (crt.sh)
+  private on|off|status   Disable/enable Firefox Private Browsing + Chromium Incognito
   help                    Show this help
   menu                    Open the interactive menu
 EOF
@@ -151,6 +152,16 @@ case "${1:-}" in
     echo "=== Cerberus Adult-Site Discovery ==="
     "$CORE" adult_find
     echo "Discovery complete."
+    ;;
+
+  private)
+    action="${2:-status}"
+    case "$action" in
+      on)  "$CORE" browser_policy enforce; echo "Private Browsing / Incognito disabled across browsers." ;;
+      off) "$CORE" browser_policy remove; echo "Private Browsing / Incognito re-enabled." ;;
+      status) "$CORE" browser_policy check ;;
+      *)   echo "Usage: cerberus private on|off|status" ;;
+    esac
     ;;
 
   ""|menu)

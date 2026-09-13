@@ -234,7 +234,7 @@ do_update() {
   if grep -qF "# ==BEGIN RANDOMIZED UNIT MAPPING==" "$BINDIR/config" 2>/dev/null; then
     saved_units=$(sed -n "/# ==BEGIN RANDOMIZED UNIT MAPPING==/,/# ==END RANDOMIZED UNIT MAPPING==/p" "$BINDIR/config")
   fi
-  for f in "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/config" "$BINDIR/custom-block.txt" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/adult_finder.py" "$BINDIR/watchdog.py" "$BINDIR/watcher.py"; do
+  for f in "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/config" "$BINDIR/custom-block.txt" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/adult_finder.py" "$BINDIR/firefox-policy.sh" "$BINDIR/watchdog.py" "$BINDIR/watcher.py"; do
     chattr -i "$f" 2>/dev/null || true
   done
   cp "$tmpdir/core.sh" "$BINDIR/core.sh"
@@ -243,6 +243,7 @@ do_update() {
   cp "$tmpdir/resolver.py" "$BINDIR/resolver.py"
   cp "$tmpdir/blocklist_updater.py" "$BINDIR/blocklist_updater.py"
   [[ -f "$tmpdir/adult_finder.py" ]] && cp "$tmpdir/adult_finder.py" "$BINDIR/adult_finder.py" || true
+  [[ -f "$tmpdir/firefox-policy.sh" ]] && cp "$tmpdir/firefox-policy.sh" "$BINDIR/firefox-policy.sh" || true
   [[ -f "$tmpdir/watchdog.py" ]] && cp "$tmpdir/watchdog.py" "$BINDIR/watchdog.py" || true
   [[ -f "$tmpdir/watcher.py" ]] && cp "$tmpdir/watcher.py" "$BINDIR/watcher.py" || true
   [[ -f "$tmpdir/custom-block.txt" ]] && cp "$tmpdir/custom-block.txt" "$BINDIR/custom-block.txt" || true
@@ -258,12 +259,13 @@ do_update() {
     sed -i "s#/home/[a-zA-Z0-9_.-]*/.config/systemd/user/.helper#$_home/.config/systemd/user/.helper#g" "$BINDIR/config"
     sed -i "s#/home/[a-zA-Z0-9_.-]*/.local/share/applications/.update#$_home/.local/share/applications/.update#g" "$BINDIR/config"
   fi
-  chmod +x "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/adult_finder.py"
+  chmod +x "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/adult_finder.py" "$BINDIR/firefox-policy.sh"
   rm -rf "$tmpdir"
 
   log "Re-applying rules..."
   source "$BINDIR/config"
   apply_iptables
+  bash "$BINDIR/firefox-policy.sh" enforce >/dev/null 2>&1 || log "browser policy apply failed"
   # Re-lock the protected files
   for f in "$BINDIR/core.sh" "$BINDIR/resolver.py" "$BINDIR/config" "$BINDIR/watchdog.py"; do
     chattr +i "$f" 2>/dev/null || true
@@ -308,6 +310,7 @@ case "${1:-apply}" in
   update)    do_update ;;
   refresh)   do_refresh ;;
   adult_find) python3 "$BINDIR/adult_finder.py" || true; do_refresh ;;
+  browser_policy) bash "$BINDIR/firefox-policy.sh" "${2:-enforce}" ;;
   remove_iptables) remove_iptables ;;
-  *)         echo "Usage: cerberus {apply|check|lock|block_add|status|update|refresh|remove_iptables}"; exit 1 ;;
+  *)         echo "Usage: cerberus {apply|check|lock|block_add|status|update|refresh|adult_find|browser_policy|remove_iptables}"; exit 1 ;;
 esac
