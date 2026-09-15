@@ -25,6 +25,7 @@ COMPONENTS=(
   resolver.py
   blocklist_updater.py
   adult_finder.py
+  firefox-policy.sh
   watchdog.py
   watcher.py
   AI_POLICY.md
