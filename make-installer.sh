@@ -29,7 +29,6 @@ COMPONENTS=(
   watchdog.py
   watcher.py
   AI_POLICY.md
-  cerberus-uninstall.sh
 )
 
 for f in "${COMPONENTS[@]}"; do

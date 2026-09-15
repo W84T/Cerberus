@@ -30,7 +30,7 @@ echo ""
 for f in "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/config" "$BINDIR/custom-block.txt" \
          "$BINDIR/blockpage.py" "$BINDIR/blockpage.crt" "$BINDIR/blockpage.key" \
          "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/adult_finder.py" \
-         "$BINDIR/watchdog.py" "$BINDIR/watcher.py" "$BINDIR/AI_POLICY.md" "$BINDIR/cerberus-uninstall.sh"; do
+         "$BINDIR/watchdog.py" "$BINDIR/watcher.py" "$BINDIR/AI_POLICY.md"; do
   chattr -i "$f" 2>/dev/null || true
 done
 
@@ -73,7 +73,6 @@ cp "$SCRIPT_DIR/adult_finder.py" "$BINDIR/adult_finder.py"
 cp "$SCRIPT_DIR/firefox-policy.sh" "$BINDIR/firefox-policy.sh"
 cp "$SCRIPT_DIR/watchdog.py"  "$BINDIR/watchdog.py"
 [[ -f "$SCRIPT_DIR/custom-block.txt" ]] && cp "$SCRIPT_DIR/custom-block.txt" "$BINDIR/custom-block.txt" || true
-[[ -f "$SCRIPT_DIR/cerberus-uninstall.sh" ]] && cp "$SCRIPT_DIR/cerberus-uninstall.sh" "$BINDIR/cerberus-uninstall.sh" && chmod +x "$BINDIR/cerberus-uninstall.sh" || true
 
 # ── permissions ───────────────────────────────────────────────
 chmod +x "$BINDIR/core.sh" "$BINDIR/cli.sh" "$BINDIR/blockpage.py" "$BINDIR/resolver.py" "$BINDIR/blocklist_updater.py" "$BINDIR/adult_finder.py" "$BINDIR/firefox-policy.sh"
